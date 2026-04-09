@@ -3,6 +3,8 @@
 - Client typecheck: `cd client && npm run typecheck` (tsc --noEmit with bundler moduleResolution)
 - Server typecheck: `cd server && npm run typecheck` (tsc --noEmit with NodeNext module)
 - Server dev runner: `tsx watch src/index.ts` (no ts-node)
+- Canvas rendering: BilliardTable.tsx exports TABLE_WIDTH=1400, TABLE_HEIGHT=700, BALL_RADIUS=14 — import these in future components needing coordinate space alignment
+- Ball coordinate space: server ball (x,y) positions use full TABLE_WIDTH×TABLE_HEIGHT space (no rail offset); canvas renders rails as visual decoration on top
 - Root package.json scripts: dev:client, dev:server, typecheck
 - Server message protocol: JSON over WebSocket; client sends `join_room` (roomCode: "" to create, code to join)
 - Server sends: `room_created`, `room_joined`, `error`, `start_game` (with GameState + playerIndex), `opponent_disconnected`
@@ -67,4 +69,22 @@ Started: Thu Apr  9 16:00:30 CST 2026
   - Page-state machine approach (lobby/waiting/game/game_over) maps cleanly to conditional JSX returns
   - Client types.ts mirrors server interfaces — keep in sync when server types change
   - `ws.onclose` fires after `ws.onerror`, so handle both for connection failure scenarios
+---
+
+## 2026-04-09 - US-004
+- Implemented Canvas billiard table rendering
+- Files changed:
+  - client/src/BilliardTable.tsx (new — full Canvas component)
+  - client/src/App.tsx (game page: replaced stub with BilliardTable + top bar)
+- What was implemented:
+  - `drawTable()`: brown rails (44px), green felt playing surface, subtle texture lines, head/foot spot dots, 6 pocket holes (4 corners + 2 mid-sides) with shadow rings
+  - `drawBall()`: cue ball (radial gradient white), solid balls (1-7 with fill colour), stripe balls (9-15 white+colour band), black 8; all with specular highlight and ball number label
+  - Canvas logical size 1400×700, scales responsively via CSS (width:100%, height:auto)
+  - Game page top bar added showing player number and turn indicator
+- **Learnings for future iterations:**
+  - Canvas clip + fill trick for stripe balls: clip to ball circle, fill white base, then fillRect for colour band — stays within circle
+  - For stripe ball numbers: draw a small white circle behind the number for legibility
+  - ctx.save()/restore() around each ball for shadow+clip isolation
+  - BilliardTable exports TABLE_WIDTH/HEIGHT/BALL_RADIUS constants — future interaction code (US-006) should import from here
+  - Note: browser verification was not done (no browser tools available) — manual check recommended
 ---
