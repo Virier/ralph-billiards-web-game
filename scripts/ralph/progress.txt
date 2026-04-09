@@ -1,3 +1,25 @@
+## Codebase Patterns
+- Monorepo: /client (React+Vite) and /server (Node+ws), each has own package.json and tsconfig.json
+- Client typecheck: `cd client && npm run typecheck` (tsc --noEmit with bundler moduleResolution)
+- Server typecheck: `cd server && npm run typecheck` (tsc --noEmit with NodeNext module)
+- Server dev runner: `tsx watch src/index.ts` (no ts-node)
+- Root package.json scripts: dev:client, dev:server, typecheck
+
 # Ralph Progress Log
 Started: Thu Apr  9 16:00:30 CST 2026
+---
+
+## 2026-04-09 - US-001
+- Implemented full project scaffold: /client (React 18 + TypeScript + Vite) and /server (Node.js + TypeScript + ws)
+- Files changed:
+  - package.json (root)
+  - client/package.json, client/tsconfig.json, client/vite.config.ts, client/index.html
+  - client/src/main.tsx, client/src/App.tsx
+  - server/package.json, server/tsconfig.json, server/src/index.ts
+  - .gitignore
+- **Learnings for future iterations:**
+  - Client uses `moduleResolution: "bundler"` and `allowImportingTsExtensions: true` (needed for Vite)
+  - Server uses `module: "NodeNext"` and `moduleResolution: "NodeNext"` for ESM-style imports
+  - Use `tsx watch` for server hot reload (dev dependency: tsx)
+  - node_modules were accidentally committed first time — .gitignore added afterward
 ---
