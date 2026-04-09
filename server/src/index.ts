@@ -76,6 +76,8 @@ interface Room {
   physics: PhysicsState | null
   ballsPocketedThisTurn: number[] // ball IDs pocketed this shot, in order
   shooterThisTurn: 0 | 1 | null  // which player fired the current shot
+  cueBallFirstContact: number | null  // ID of first ball the cue ball hit this shot
+  cueBallPocketedThisTurn: boolean    // whether cue ball was pocketed this shot
 }
 
 // Client → Server messages
@@ -348,16 +350,52 @@ function handleTurnEnd(room: Room): void {
   const shooter = room.shooterThisTurn
 
   if (shooter !== null) {
-    // Assign groups if not yet assigned
+    // Assign groups if not yet assigned (must happen before foul check)
     assignGroupsIfNeeded(state, room.ballsPocketedThisTurn, shooter)
+  }
+
+  // Detect foul
+  let isFoul = false
+  if (shooter !== null) {
+    // Foul type 1: cue ball pocketed
+    if (room.cueBallPocketedThisTurn) {
+      isFoul = true
+    }
+
+    // Foul type 2: groups assigned and cue ball didn't hit own group first
+    if (!isFoul && state.playerGroups[shooter] !== 'unassigned') {
+      const firstContact = room.cueBallFirstContact
+      if (firstContact === null) {
+        // No contact at all — foul (missed entirely)
+        isFoul = true
+      } else {
+        const firstBall = state.balls.find((b) => b.id === firstContact)
+        if (firstBall) {
+          const shooterGroup = state.playerGroups[shooter]
+          // Must hit own group first (stripe/solid type must match group)
+          if (firstBall.type !== shooterGroup) {
+            isFoul = true
+          }
+        }
+      }
+    }
   }
 
   // Reset per-turn tracking
   room.ballsPocketedThisTurn = []
   room.shooterThisTurn = null
+  room.cueBallFirstContact = null
+  room.cueBallPocketedThisTurn = false
 
-  // Switch turns (basic: always switch; foul/keep-turn logic handled in US-008/009)
+  // Switch turns; grant ball-in-hand on foul
   state.currentPlayer = state.currentPlayer === 0 ? 1 : 0
+  if (isFoul) {
+    state.foulPending = true
+    state.canPlaceCueBall = true
+  } else {
+    state.foulPending = false
+    state.canPlaceCueBall = false
+  }
 }
 
 function startPhysicsLoop(room: Room): void {
@@ -365,12 +403,33 @@ function startPhysicsLoop(room: Room): void {
   const physics = room.physics
   const state = room.state
 
+  // Track first cue ball contact with another ball (for foul detection)
+  Events.on(physics.engine, 'collisionStart', (event) => {
+    if (room.cueBallFirstContact !== null) return // already recorded first contact
+    if (!state.ballsMoving) return                // only track during active shot
+    for (const pair of event.pairs) {
+      const { bodyA, bodyB } = pair
+      const isCueA = bodyA.label === 'ball_0'
+      const isCueB = bodyB.label === 'ball_0'
+      if (!isCueA && !isCueB) continue
+      const otherBody = isCueA ? bodyB : bodyA
+      if (!otherBody.label.startsWith('ball_')) continue // ignore wall contacts
+      const otherId = parseInt(otherBody.label.replace('ball_', ''), 10)
+      if (otherId === 0) continue
+      room.cueBallFirstContact = otherId
+      break
+    }
+  })
+
   physics.intervalId = setInterval(() => {
     Engine.update(physics.engine, PHYSICS_DT)
     syncPhysicsToState(state, physics)
     const newlyPocketed = checkPocketed(state, physics)
     if (newlyPocketed.length > 0) {
       room.ballsPocketedThisTurn.push(...newlyPocketed)
+      if (newlyPocketed.includes(0)) {
+        room.cueBallPocketedThisTurn = true
+      }
     }
 
     const wasMoved = state.ballsMoving
@@ -445,6 +504,8 @@ wss.on('connection', (ws) => {
           physics: null,
           ballsPocketedThisTurn: [],
           shooterThisTurn: null,
+          cueBallFirstContact: null,
+          cueBallPocketedThisTurn: false,
         }
         rooms.set(code, room)
         playerRoom.set(ws, code)
@@ -494,6 +555,9 @@ wss.on('connection', (ws) => {
       if (room.state.ballsMoving) return
       if (room.state.phase !== 'playing') return
 
+      // Cannot shoot while ball-in-hand placement is pending
+      if (room.state.canPlaceCueBall) return
+
       const cueBall = room.state.balls.find((b) => b.id === 0)
       if (!cueBall || cueBall.pocketed) return
 
@@ -509,9 +573,11 @@ wss.on('connection', (ws) => {
 
       Body.applyForce(cueBallBody, cueBallBody.position, { x: fx, y: fy })
       room.state.ballsMoving = true
-      // Track shooter and reset per-turn pocketed list
+      // Track shooter and reset per-turn tracking
       room.shooterThisTurn = playerIndex
       room.ballsPocketedThisTurn = []
+      room.cueBallFirstContact = null
+      room.cueBallPocketedThisTurn = false
     } else if (message.type === 'place_cue_ball') {
       const roomCode = playerRoom.get(ws)
       if (!roomCode) return
@@ -524,7 +590,7 @@ wss.on('connection', (ws) => {
       const playerIndex = rawPlaceIdx as 0 | 1
       if (room.state.currentPlayer !== playerIndex) return
 
-      // Validate placement is within bounds
+      // Validate placement is within table bounds
       const { x, y } = message
       const margin = BALL_RADIUS + 2
       if (
@@ -534,6 +600,17 @@ wss.on('connection', (ws) => {
         y > PLAY_BOTTOM - margin
       ) {
         send(ws, { type: 'error', message: '白球只能放在台面内' })
+        return
+      }
+
+      // Validate half-court restriction: player 0 → left half; player 1 → right half
+      const halfX = TABLE_WIDTH / 2
+      if (playerIndex === 0 && x > halfX) {
+        send(ws, { type: 'error', message: '白球只能放在己方底线半场内' })
+        return
+      }
+      if (playerIndex === 1 && x < halfX) {
+        send(ws, { type: 'error', message: '白球只能放在己方底线半场内' })
         return
       }
 
@@ -564,6 +641,7 @@ wss.on('connection', (ws) => {
       World.add(room.physics.engine.world, newBody)
 
       room.state.canPlaceCueBall = false
+      room.state.foulPending = false
       broadcastGameState(room)
     }
   })
