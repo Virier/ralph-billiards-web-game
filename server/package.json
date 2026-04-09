@@ -8,9 +8,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "matter-js": "^0.20.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/matter-js": "^0.20.2",
     "@types/node": "^22.9.0",
     "@types/ws": "^8.5.13",
     "tsx": "^4.19.2",
