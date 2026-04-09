@@ -31,6 +31,7 @@ export type ServerMessage =
   | { type: 'opponent_disconnected' }
   | { type: 'game_state'; state: GameState }
   | { type: 'game_over'; winner: 0 | 1 }
+  | { type: 'turn_timeout' }
 
 // Client → Server messages
 export type ClientMessage =

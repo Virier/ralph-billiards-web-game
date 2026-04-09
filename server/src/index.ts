@@ -78,6 +78,7 @@ interface Room {
   shooterThisTurn: 0 | 1 | null  // which player fired the current shot
   cueBallFirstContact: number | null  // ID of first ball the cue ball hit this shot
   cueBallPocketedThisTurn: boolean    // whether cue ball was pocketed this shot
+  turnTimeoutId: ReturnType<typeof setTimeout> | null
 }
 
 // Client → Server messages
@@ -95,6 +96,7 @@ type ServerMessage =
   | { type: 'game_state'; state: GameState }
   | { type: 'game_over'; winner: 0 | 1 }
   | { type: 'opponent_disconnected' }
+  | { type: 'turn_timeout' }
 
 const rooms = new Map<string, Room>()
 const playerRoom = new Map<WebSocket, string>()
@@ -330,6 +332,87 @@ function broadcastGameOver(room: Room, winner: 0 | 1): void {
   }
 }
 
+const TURN_TIMEOUT_MS = 60000
+
+function clearTurnTimer(room: Room): void {
+  if (room.turnTimeoutId !== null) {
+    clearTimeout(room.turnTimeoutId)
+    room.turnTimeoutId = null
+  }
+}
+
+/** Place (or re-place) the cue ball at the default position for a given player */
+function autoPlaceCueBall(room: Room, playerIndex: 0 | 1): void {
+  if (!room.state || !room.physics) return
+  const cueBall = room.state.balls.find((b) => b.id === 0)
+  if (!cueBall) return
+
+  const x = playerIndex === 0 ? TABLE_WIDTH * 0.25 : TABLE_WIDTH * 0.75
+  const y = TABLE_HEIGHT / 2
+
+  const oldBody = room.physics.ballBodies.get(0)
+  if (oldBody) World.remove(room.physics.engine.world, oldBody)
+
+  cueBall.x = x
+  cueBall.y = y
+  cueBall.vx = 0
+  cueBall.vy = 0
+  cueBall.pocketed = false
+
+  const newBody = Bodies.circle(x, y, BALL_RADIUS, {
+    restitution: 0.85,
+    friction: 0.005,
+    frictionAir: 0.015,
+    density: 0.002,
+    label: 'ball_0',
+  })
+  room.physics.ballBodies.set(0, newBody)
+  World.add(room.physics.engine.world, newBody)
+}
+
+function handleTimeout(room: Room): void {
+  if (!room.state || room.state.phase !== 'playing') return
+  const state = room.state
+
+  // If cue ball placement was pending, auto-place it
+  if (state.canPlaceCueBall) {
+    autoPlaceCueBall(room, state.currentPlayer)
+    state.canPlaceCueBall = false
+    state.foulPending = false
+  }
+
+  // Switch turn
+  state.currentPlayer = state.currentPlayer === 0 ? 1 : 0
+
+  // Reset per-turn tracking
+  room.ballsPocketedThisTurn = []
+  room.shooterThisTurn = null
+  room.cueBallFirstContact = null
+  room.cueBallPocketedThisTurn = false
+
+  broadcastGameState(room)
+
+  const msg: ServerMessage = { type: 'turn_timeout' }
+  const json = JSON.stringify(msg)
+  for (const player of room.players) {
+    if (player.readyState === WebSocket.OPEN) {
+      player.send(json)
+    }
+  }
+
+  // Start timer for the new player
+  startTurnTimer(room)
+}
+
+function startTurnTimer(room: Room): void {
+  clearTurnTimer(room)
+  if (!room.state || room.state.phase !== 'playing') return
+  room.turnTimeoutId = setTimeout(() => {
+    room.turnTimeoutId = null
+    handleTimeout(room)
+  }, TURN_TIMEOUT_MS)
+}
+
 /**
  * Assigns ball groups after the first non-black-8 ball is pocketed.
  * shooter gets the group matching the first pocketed ball's type;
@@ -446,6 +529,9 @@ function handleTurnEnd(room: Room): void {
     state.foulPending = false
     state.canPlaceCueBall = false
   }
+
+  // Start the turn timer for the new current player
+  startTurnTimer(room)
 }
 
 function startPhysicsLoop(room: Room): void {
@@ -514,6 +600,7 @@ function cleanupRoom(roomCode: string): void {
   const room = rooms.get(roomCode)
   if (!room) return
   stopPhysicsLoop(room)
+  clearTurnTimer(room)
   for (const player of room.players) {
     playerRoom.delete(player)
   }
@@ -556,6 +643,7 @@ wss.on('connection', (ws) => {
           shooterThisTurn: null,
           cueBallFirstContact: null,
           cueBallPocketedThisTurn: false,
+          turnTimeoutId: null,
         }
         rooms.set(code, room)
         playerRoom.set(ws, code)
@@ -589,8 +677,9 @@ wss.on('connection', (ws) => {
         send(room.players[0], { type: 'start_game', state, playerIndex: 0 })
         send(room.players[1], { type: 'start_game', state, playerIndex: 1 })
 
-        // Start physics loop
+        // Start physics loop and turn timer
         startPhysicsLoop(room)
+        startTurnTimer(room)
       }
     } else if (message.type === 'shoot') {
       const roomCode = playerRoom.get(ws)
@@ -621,6 +710,9 @@ wss.on('connection', (ws) => {
       const fx = (message.dirX / len) * forceMagnitude
       const fy = (message.dirY / len) * forceMagnitude
 
+      // Clear turn timer — player took their shot
+      clearTurnTimer(room)
+
       Body.applyForce(cueBallBody, cueBallBody.position, { x: fx, y: fy })
       room.state.ballsMoving = true
       // Track shooter and reset per-turn tracking
@@ -634,6 +726,7 @@ wss.on('connection', (ws) => {
       const room = rooms.get(roomCode)
       if (!room?.state || !room.physics) return
       if (!room.state.canPlaceCueBall) return
+      clearTurnTimer(room)
 
       const rawPlaceIdx = room.players.indexOf(ws)
       if (rawPlaceIdx === -1) return
@@ -693,6 +786,8 @@ wss.on('connection', (ws) => {
       room.state.canPlaceCueBall = false
       room.state.foulPending = false
       broadcastGameState(room)
+      // Player placed the ball — give them 60s to shoot
+      startTurnTimer(room)
     }
   })
 

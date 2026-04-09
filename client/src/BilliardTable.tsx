@@ -270,6 +270,33 @@ function drawAimingOverlay(
   }
 }
 
+function drawPlacementHighlight(ctx: CanvasRenderingContext2D, playerIndex: 0 | 1): void {
+  // Highlight the allowed half for cue ball placement
+  const left = playerIndex === 0 ? RAIL_WIDTH : TABLE_WIDTH / 2
+  const right = playerIndex === 0 ? TABLE_WIDTH / 2 : TABLE_WIDTH - RAIL_WIDTH
+  const top = RAIL_WIDTH
+  const bottom = TABLE_HEIGHT - RAIL_WIDTH
+
+  ctx.save()
+  ctx.fillStyle = 'rgba(255, 255, 100, 0.18)'
+  ctx.fillRect(left, top, right - left, bottom - top)
+
+  // Dashed border around the allowed zone
+  ctx.strokeStyle = 'rgba(255, 255, 100, 0.7)'
+  ctx.lineWidth = 2
+  ctx.setLineDash([10, 6])
+  ctx.strokeRect(left, top, right - left, bottom - top)
+  ctx.setLineDash([])
+
+  // Label
+  ctx.fillStyle = 'rgba(255, 255, 100, 0.9)'
+  ctx.font = 'bold 18px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('点击放置白球', (left + right) / 2, top + 24)
+  ctx.restore()
+}
+
 interface AimState {
   cursorX: number
   cursorY: number
@@ -281,25 +308,33 @@ interface Props {
   playerIndex: 0 | 1
   isMyTurn: boolean
   ballsMoving: boolean
+  canPlaceCueBall: boolean
   onShoot: (dirX: number, dirY: number, power: number) => void
+  onPlaceCueBall: (x: number, y: number) => void
 }
 
-export default function BilliardTable({ gameState, isMyTurn, ballsMoving, onShoot }: Props) {
+export default function BilliardTable({ gameState, playerIndex, isMyTurn, ballsMoving, canPlaceCueBall, onShoot, onPlaceCueBall }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [aimState, setAimState] = useState<AimState | null>(null)
 
   // Refs for stable event handler access
   const canAimRef = useRef(false)
+  const canPlaceCueBallRef = useRef(canPlaceCueBall)
+  const playerIndexRef = useRef(playerIndex)
   const gameStateRef = useRef(gameState)
   const onShootRef = useRef(onShoot)
+  const onPlaceCueBallRef = useRef(onPlaceCueBall)
 
-  const canAim = isMyTurn && !ballsMoving
+  const canAim = isMyTurn && !ballsMoving && !canPlaceCueBall
 
   useEffect(() => { canAimRef.current = canAim }, [canAim])
+  useEffect(() => { canPlaceCueBallRef.current = canPlaceCueBall }, [canPlaceCueBall])
+  useEffect(() => { playerIndexRef.current = playerIndex }, [playerIndex])
   useEffect(() => { gameStateRef.current = gameState }, [gameState])
   useEffect(() => { onShootRef.current = onShoot }, [onShoot])
+  useEffect(() => { onPlaceCueBallRef.current = onPlaceCueBall }, [onPlaceCueBall])
 
-  // Clear aim when it's no longer our turn or balls start moving
+  // Clear aim when it's no longer our turn, balls start moving, or we need to place cue ball
   useEffect(() => {
     if (!canAim) {
       setAimState(null)
@@ -319,6 +354,11 @@ export default function BilliardTable({ gameState, isMyTurn, ballsMoving, onShoo
       drawBall(ctx, ball)
     }
 
+    // Placement highlight
+    if (canPlaceCueBall) {
+      drawPlacementHighlight(ctx, playerIndex)
+    }
+
     // Aiming overlay
     if (canAim && aimState) {
       const cueBall = gameState.balls.find(b => b.type === 'cue' && !b.pocketed)
@@ -326,7 +366,7 @@ export default function BilliardTable({ gameState, isMyTurn, ballsMoving, onShoo
         drawAimingOverlay(ctx, cueBall, aimState.cursorX, aimState.cursorY, aimState.isDragging)
       }
     }
-  }, [gameState, aimState, canAim])
+  }, [gameState, aimState, canAim, canPlaceCueBall, playerIndex])
 
   const toCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -361,6 +401,15 @@ export default function BilliardTable({ gameState, isMyTurn, ballsMoving, onShoo
   }, [])
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Handle cue ball placement click
+    if (canPlaceCueBallRef.current) {
+      const pos = toCanvasCoords(e)
+      if (pos) {
+        onPlaceCueBallRef.current(pos.x, pos.y)
+      }
+      return
+    }
+
     if (!canAimRef.current) return
     const pos = toCanvasCoords(e)
     if (!pos) return
@@ -406,7 +455,7 @@ export default function BilliardTable({ gameState, isMyTurn, ballsMoving, onShoo
         height: 'auto',
         borderRadius: 4,
         boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-        cursor: canAim ? 'crosshair' : 'default',
+        cursor: canPlaceCueBall ? 'cell' : canAim ? 'crosshair' : 'default',
       }}
       onMouseMove={handleMouseMove}
       onMouseDown={handleMouseDown}

@@ -38,10 +38,48 @@ const initialState: AppState = {
   winner: null,
 }
 
+const TURN_SECONDS = 60
+
 export default function App() {
   const [state, setState] = useState<AppState>(initialState)
   const [joinCode, setJoinCode] = useState('')
   const wsRef = useRef<WebSocket | null>(null)
+
+  // Countdown state (60 → 0)
+  const [countdown, setCountdown] = useState(TURN_SECONDS)
+  const turnStartRef = useRef<number>(Date.now())
+  const prevCurrentPlayerRef = useRef<0 | 1 | null>(null)
+  const prevCanPlaceCueBallRef = useRef<boolean>(false)
+
+  // Reset countdown when turn switches or cue ball is placed
+  useEffect(() => {
+    const gs = state.gameState
+    if (!gs || gs.phase !== 'playing') return
+    let reset = false
+    if (gs.currentPlayer !== prevCurrentPlayerRef.current) {
+      prevCurrentPlayerRef.current = gs.currentPlayer
+      reset = true
+    }
+    if (!gs.canPlaceCueBall && prevCanPlaceCueBallRef.current) {
+      // Cue ball was just placed — player now has 60s to shoot
+      reset = true
+    }
+    prevCanPlaceCueBallRef.current = gs.canPlaceCueBall
+    if (reset) {
+      turnStartRef.current = Date.now()
+      setCountdown(TURN_SECONDS)
+    }
+  }, [state.gameState])
+
+  // Tick every 500ms to update countdown display
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!state.gameState || state.gameState.phase !== 'playing' || state.gameState.ballsMoving) return
+      const elapsed = Math.floor((Date.now() - turnStartRef.current) / 1000)
+      setCountdown(Math.max(0, TURN_SECONDS - elapsed))
+    }, 500)
+    return () => clearInterval(id)
+  }, [state.gameState])
 
   const connectAndSend = (msg: ClientMessage) => {
     setState(prev => ({ ...prev, error: null }))
@@ -92,6 +130,9 @@ export default function App() {
           break
         case 'game_over':
           setState(prev => ({ ...prev, page: 'game_over', winner: data.winner }))
+          break
+        case 'turn_timeout':
+          // State already updated via game_state broadcast; nothing extra needed
           break
         case 'opponent_disconnected':
           setState(prev => ({ ...prev, opponentDisconnected: true }))
@@ -144,6 +185,13 @@ export default function App() {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     const msg: ClientMessage = { type: 'shoot', dirX, dirY, power }
+    ws.send(JSON.stringify(msg))
+  }, [])
+
+  const handlePlaceCueBall = useCallback((x: number, y: number) => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const msg: ClientMessage = { type: 'place_cue_ball', x, y }
     ws.send(JSON.stringify(msg))
   }, [])
 
@@ -258,12 +306,12 @@ export default function App() {
           })}
           <div style={styles.gameStatus}>
             {state.gameState?.canPlaceCueBall && state.gameState.currentPlayer === state.playerIndex
-              ? '🎱 放置白球'
+              ? '🎱 点击放置白球'
               : state.gameState?.ballsMoving
               ? '⏳ 运动中…'
               : state.gameState?.currentPlayer === state.playerIndex
-              ? '轮到你了'
-              : '等待对手…'}
+              ? (countdown <= 10 ? <span style={styles.countdown}>{countdown}s</span> : '轮到你了')
+              : (countdown <= 10 ? <span style={styles.countdownDim}>{countdown}s</span> : '等待对手…')}
           </div>
         </div>
         <div style={styles.tableWrapper}>
@@ -273,7 +321,9 @@ export default function App() {
               playerIndex={state.playerIndex ?? 0}
               isMyTurn={state.gameState.currentPlayer === state.playerIndex}
               ballsMoving={state.gameState.ballsMoving}
+              canPlaceCueBall={state.gameState.canPlaceCueBall && state.gameState.currentPlayer === state.playerIndex}
               onShoot={handleShoot}
+              onPlaceCueBall={handlePlaceCueBall}
             />
           )}
         </div>
@@ -501,6 +551,16 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ccc',
     minWidth: 100,
     textAlign: 'center',
+  },
+  countdown: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: '#f44336',
+  },
+  countdownDim: {
+    fontSize: 16,
+    fontWeight: 600,
+    color: '#ff9800',
   },
   tableWrapper: {
     flex: 1,
