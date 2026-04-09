@@ -184,3 +184,24 @@ Started: Thu Apr  9 16:00:30 CST 2026
   - When `canPlaceCueBall=true`, cue ball may or may not be pocketed; place_cue_ball handler removes old body first (safe for both cases)
   - Foul tracking fields must be reset in BOTH shoot handler (start of new shot) and handleTurnEnd (after turn resolves)
 ---
+
+## 2026-04-09 - US-009
+- Implemented server-side win/loss detection when black 8 is pocketed
+- Files changed:
+  - server/src/index.ts (added broadcastGameOver function + game-over detection block in handleTurnEnd)
+- What was implemented:
+  - `broadcastGameOver(room, winner)`: sends `game_over` event to both players
+  - In `handleTurnEnd`: checks if ball id=8 is in `ballsPocketedThisTurn`
+  - Win/loss rules:
+    1. Cue ball + black 8 both pocketed → shooter loses (opponent wins)
+    2. Groups unassigned when 8 pocketed (e.g. on break) → shooter loses
+    3. 8 pocketed but shooter still has group balls remaining → shooter loses
+    4. 8 pocketed and shooter's group all cleared → shooter wins
+  - On game over: sets `state.phase = 'game_over'`, `state.winner`, broadcasts `game_state` then `game_over`, stops physics loop, returns early
+  - Frontend `App.tsx` already handled `game_over` events (game_over page with win/lose message and restart button was already implemented in US-003)
+- **Learnings for future iterations:**
+  - game-over detection must happen BEFORE resetting per-turn tracking fields (ballsPocketedThisTurn, cueBallPocketedThisTurn)
+  - `stopPhysicsLoop(room)` is safe to call from within the physics loop callback (clearInterval on own intervalId)
+  - `state.phase !== 'playing'` guard in shoot handler already prevents shooting after game over — no extra guard needed
+  - `GameState.winner` is `number | null` in the type but the game_over event sends `0 | 1` — keep consistent
+---
