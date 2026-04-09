@@ -1,3 +1,26 @@
+## 2026-04-09 - US-011
+- Implemented server-side turn timeout (60s) + client countdown + cue ball placement highlight
+- Files changed:
+  - server/src/index.ts (turn timer functions, Room.turnTimeoutId, auto-place on timeout)
+  - client/src/types.ts (added turn_timeout to ServerMessage)
+  - client/src/App.tsx (countdown state/effect, handlePlaceCueBall, countdown display in top bar)
+  - client/src/BilliardTable.tsx (canPlaceCueBall prop, placement highlight drawing, click-to-place handler)
+- What was implemented:
+  - `startTurnTimer(room)` / `clearTurnTimer(room)` / `handleTimeout(room)`: server enforces 60s turn limit
+  - Timeout handler auto-places cue ball if `canPlaceCueBall=true` at player's default position, then switches turn and sends `turn_timeout` event
+  - Timer resets on each turn switch (handleTurnEnd) and after place_cue_ball (player gets 60s to shoot)
+  - Client countdown: refs track turn start time; useEffect detects currentPlayer/canPlaceCueBall transitions; 500ms interval updates countdown display
+  - Last 10s shown as red number for current player, orange for opponent
+  - `drawPlacementHighlight()`: yellow semi-transparent zone over allowed half, dashed border, "点击放置白球" label
+  - Canvas cursor changes to `cell` during placement mode
+  - `handleMouseUp` dispatches to placement or aiming depending on `canPlaceCueBallRef`
+- **Learnings for future iterations:**
+  - setTimeout/clearTimeout stored in Room; must call clearTurnTimer in cleanupRoom and on shoot to prevent stale timers
+  - Detecting React state transitions: use refs (prevCurrentPlayerRef, prevCanPlaceCueBallRef) inside useEffect to compare prev vs current values
+  - `canAim = isMyTurn && !ballsMoving && !canPlaceCueBall` — placement mode disables aiming
+  - Browser verification not done (no browser tools available) — manual check recommended
+---
+
 ## Codebase Patterns
 - Room interface has `ballsPocketedThisTurn: number[]`, `shooterThisTurn: 0|1|null`, `cueBallFirstContact: number|null`, `cueBallPocketedThisTurn: boolean` for per-shot tracking; all reset on each `shoot` event
 - Turn end is detected by `wasMoved && !state.ballsMoving` in physics loop → calls `handleTurnEnd(room)`; foul detection now in handleTurnEnd (cue pocketed OR hit wrong group first)
