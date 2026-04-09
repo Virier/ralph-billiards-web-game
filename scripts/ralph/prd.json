@@ -1,0 +1,181 @@
+{
+  "project": "台球网页版双人对战",
+  "branchName": "ralph/billiards-web-game",
+  "description": "中式台球（黑8）网页版双人实时对战游戏，React + Canvas + Matter.js + WebSocket",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "项目脚手架搭建",
+      "description": "As a developer, I need a monorepo with /client and /server directories so that both can be developed and run together.",
+      "acceptanceCriteria": [
+        "/client: React 18 + TypeScript + Vite，npm run dev 可启动",
+        "/server: Node.js + TypeScript + ws 库，npm run dev 可启动",
+        "根目录 package.json 含 scripts: dev:client, dev:server",
+        "两端 tsconfig.json 配置正确",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "后端 WebSocket 服务 + 房间管理",
+      "description": "As a player, I want to create or join a room so that I can be matched with an opponent.",
+      "acceptanceCriteria": [
+        "Server 监听 WebSocket 连接",
+        "收到 join_room 消息（含 roomCode）时：roomCode 为空则新建房间并生成唯一 6 位码，roomCode 有效则加入，无效则返回错误",
+        "房间满 2 人时向双方发送 start_game 事件（含初始游戏状态）",
+        "玩家断开时向另一方发送 opponent_disconnected 事件",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "前端大厅页面 + WebSocket 连接",
+      "description": "As a player, I want a lobby where I can create or join a room so that I can start a game.",
+      "acceptanceCriteria": [
+        "首页显示「创建房间」和「加入房间（输入房间码）」",
+        "创建房间后显示 6 位房间码，等待对手",
+        "加入房间时输入 6 位码，无效码显示错误提示",
+        "收到 start_game 事件后跳转到游戏页面",
+        "收到 opponent_disconnected 事件时显示提示",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Canvas 台球桌与球的静态渲染",
+      "description": "As a player, I want to see the billiard table and all 16 balls in opening formation so that I understand the game state.",
+      "acceptanceCriteria": [
+        "Canvas 渲染绿色台球桌，尺寸比例 2:1",
+        "4 条边框，6 个圆形球袋（四角 + 两侧中间）",
+        "16 颗球以三角形开球阵型摆放（白球在底线 1/4 处）",
+        "球显示编号，1-7 纯色，8 黑色，9-15 花色，白球纯白",
+        "布局适配 1280×720 以上屏幕",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "服务端 Matter.js 物理循环 + 状态广播",
+      "description": "As a player, I want balls to move and collide realistically, with both clients seeing the same result.",
+      "acceptanceCriteria": [
+        "服务端使用 Matter.js，以 60fps 运行物理 tick",
+        "球碰到边框正确反弹，有摩擦衰减",
+        "球进入球袋区域（半径内）后从物理世界移除",
+        "每帧将所有球的位置广播给双方（game_state 事件）",
+        "所有球速度 < 0.5 时标记为静止，通知双方可以击球",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "客户端瞄准与击球交互",
+      "description": "As a player, I want to aim and shoot the cue ball with my mouse so that I can take my turn.",
+      "acceptanceCriteria": [
+        "轮到当前玩家时，鼠标移向白球区域显示瞄准线（从白球延伸的射线）",
+        "按住并拖拽鼠标调整击球方向和力度，力度条显示 0-100%（最大拖拽距离 150px）",
+        "松开鼠标向服务端发送 shoot 事件（含方向向量和力度）",
+        "非当前回合玩家的瞄准交互被禁用",
+        "所有球运动时禁用击球交互",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "服务端球组分配逻辑",
+      "description": "As a player, I want the game to assign ball groups after the break so that each player knows which balls to pocket.",
+      "acceptanceCriteria": [
+        "开球前双方球组均为 unassigned",
+        "开球后第一颗非黑8进袋的球决定分组：该玩家为纯色（1-7），对手为花色（9-15）",
+        "若开球一杆进多颗不同类型的球，以第一颗判定",
+        "分组信息包含在 game_state 事件中",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "服务端犯规检测 + 手放白球",
+      "description": "As a player, I want fouls to be detected and penalized so that the game is fair.",
+      "acceptanceCriteria": [
+        "检测犯规：白球未先碰己方球（分组后）、白球落袋",
+        "犯规后切换到对方回合",
+        "犯规后对方可手放白球：发送 place_cue_ball 事件（含坐标），白球只能放在己方底线半场内",
+        "坐标不在合法区域时返回错误，不放置",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "服务端胜负判定",
+      "description": "As a player, I want the game to correctly determine the winner when black 8 is pocketed.",
+      "acceptanceCriteria": [
+        "玩家在己方球全部入袋后合法击入黑8 → 该玩家胜，发送 game_over 事件（含 winner）",
+        "玩家在己方球未全入袋时击入黑8 → 该玩家负",
+        "白球与黑8同时入袋 → 击球方负",
+        "game_over 事件到达后前端显示胜负结算页（赢家名称 + 重新开始按钮）",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "前端回合状态 UI",
+      "description": "As a player, I want to see whose turn it is and each player's ball group so that I can plan my shots.",
+      "acceptanceCriteria": [
+        "界面顶部显示：当前回合玩家（高亮）、双方球组（纯色/花色/未定）、各自剩余球数",
+        "当前回合玩家名称或「你」/「对手」标签高亮显示",
+        "剩余球数随 game_state 实时更新",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "前端超时自动换回合 + 手放白球交互",
+      "description": "As a player, I want the turn to auto-switch after 60 seconds of inactivity, and to be able to place the cue ball after a foul.",
+      "acceptanceCriteria": [
+        "当前玩家 60 秒内未击球，自动切换回合（服务端计时，发送 turn_timeout 事件）",
+        "UI 显示倒计时（最后 10 秒显示数字）",
+        "收到手放白球权限（foul 后）时，己方底线半场区域高亮，点击放置白球",
+        "放置白球后高亮消失，正常进入击球模式",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
