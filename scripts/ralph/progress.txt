@@ -1,4 +1,7 @@
 ## Codebase Patterns
+- Room interface has `ballsPocketedThisTurn: number[]` and `shooterThisTurn: 0|1|null` for per-shot tracking; reset on each `shoot` event, populated by `checkPocketed` returning newly pocketed IDs each frame
+- Turn end is detected by `wasMoved && !state.ballsMoving` in physics loop → calls `handleTurnEnd(room)`; currently always switches `currentPlayer` (US-008/009 will refine keep-turn/foul logic)
+- Group assignment: `assignGroupsIfNeeded` iterates `ballsPocketedThisTurn`, skips cue/black balls, assigns shooter = first-pocketed ball's type, opponent = opposite
 - Monorepo: /client (React+Vite) and /server (Node+ws), each has own package.json and tsconfig.json
 - Client typecheck: `cd client && npm run typecheck` (tsc --noEmit with bundler moduleResolution)
 - Server typecheck: `cd server && npm run typecheck` (tsc --noEmit with NodeNext module)
@@ -140,4 +143,23 @@ Started: Thu Apr  9 16:00:30 CST 2026
   - setAimState with functional update (`prev =>`) works well for shoot logic — reads current aim without needing aimState in deps
   - Ghost ball at end of aiming line gives visual feedback without complex reflection logic
   - Note: browser verification was not done (no browser tools available) — manual check recommended
+---
+
+## 2026-04-09 - US-007
+- Implemented server-side ball group assignment logic
+- Files changed:
+  - server/src/index.ts (added group assignment + turn switching + per-shot tracking)
+- What was implemented:
+  - `Room` extended with `ballsPocketedThisTurn: number[]` and `shooterThisTurn: 0|1|null`
+  - `checkPocketed` now returns newly pocketed ball IDs each frame (order matches `state.balls` array order)
+  - Physics loop accumulates pocketed IDs into `room.ballsPocketedThisTurn` each frame
+  - `assignGroupsIfNeeded(state, ballsPocketed, shooter)`: iterates pocketed list, skips cue/black balls, assigns first solid/stripe ball to shooter's group and opposite to opponent
+  - `handleTurnEnd(room)`: calls group assignment then switches `currentPlayer` (always-switch for now)
+  - `shoot` handler resets `ballsPocketedThisTurn` and sets `shooterThisTurn = playerIndex` on each shot
+  - `playerGroups` already part of `GameState` and included in every `game_state` broadcast
+- **Learnings for future iterations:**
+  - `checkPocketed` now returns `number[]` instead of `void` — callers must handle the return value
+  - "Always switch turns" is a placeholder; US-008 should implement "keep turn if you pot your group ball without foul"
+  - Group assignment only fires when `playerGroups[0] === 'unassigned'` — safe to call every turn end
+  - `1 - shooter` gives opponent index cleanly when shooter is `0|1` (TypeScript requires explicit cast to `PlayerGroup`)
 ---
