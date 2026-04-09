@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import type { GameState, ServerMessage, ClientMessage } from './types'
+import BilliardTable from './BilliardTable'
 
 const WS_URL = 'ws://localhost:8080'
 
@@ -199,7 +200,7 @@ export default function App() {
 
   if (state.page === 'game') {
     return (
-      <div style={styles.container}>
+      <div style={styles.gamePage}>
         {state.opponentDisconnected && (
           <div style={styles.alertOverlay}>
             <div style={styles.alertBox}>
@@ -210,9 +211,21 @@ export default function App() {
             </div>
           </div>
         )}
-        <div style={styles.gameStub}>
-          <p>游戏页面 — 玩家 {state.playerIndex === 0 ? '1' : '2'}</p>
-          <p style={{ fontSize: 14, color: '#aaa' }}>（台球桌渲染将在 US-004 实现）</p>
+        <div style={styles.gameTopBar}>
+          <span style={styles.playerLabel}>
+            玩家 {state.playerIndex === 0 ? '1' : '2'}
+          </span>
+          <span style={styles.turnIndicator}>
+            {state.gameState?.currentPlayer === state.playerIndex ? '轮到你了' : '等待对手'}
+          </span>
+        </div>
+        <div style={styles.tableWrapper}>
+          {state.gameState && (
+            <BilliardTable
+              gameState={state.gameState}
+              playerIndex={state.playerIndex ?? 0}
+            />
+          )}
         </div>
       </div>
     )
@@ -377,12 +390,39 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     margin: 0,
   },
-  gameStub: {
-    background: '#243324',
-    borderRadius: 12,
-    padding: '40px 60px',
-    textAlign: 'center',
-    fontSize: 18,
+  gamePage: {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    background: '#111c11',
+    color: '#fff',
+    fontFamily: 'system-ui, sans-serif',
+  },
+  gameTopBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 24px',
+    background: '#1a2a1a',
+    borderBottom: '1px solid #2d4a2d',
+    flexShrink: 0,
+  },
+  playerLabel: {
+    fontSize: 15,
+    color: '#7fc97f',
+    fontWeight: 600,
+  },
+  turnIndicator: {
+    fontSize: 14,
+    color: '#aaa',
+  },
+  tableWrapper: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    overflow: 'auto',
   },
 }
 
