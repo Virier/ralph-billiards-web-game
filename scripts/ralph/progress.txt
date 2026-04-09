@@ -1,6 +1,6 @@
 ## Codebase Patterns
-- Room interface has `ballsPocketedThisTurn: number[]` and `shooterThisTurn: 0|1|null` for per-shot tracking; reset on each `shoot` event, populated by `checkPocketed` returning newly pocketed IDs each frame
-- Turn end is detected by `wasMoved && !state.ballsMoving` in physics loop → calls `handleTurnEnd(room)`; currently always switches `currentPlayer` (US-008/009 will refine keep-turn/foul logic)
+- Room interface has `ballsPocketedThisTurn: number[]`, `shooterThisTurn: 0|1|null`, `cueBallFirstContact: number|null`, `cueBallPocketedThisTurn: boolean` for per-shot tracking; all reset on each `shoot` event
+- Turn end is detected by `wasMoved && !state.ballsMoving` in physics loop → calls `handleTurnEnd(room)`; foul detection now in handleTurnEnd (cue pocketed OR hit wrong group first)
 - Group assignment: `assignGroupsIfNeeded` iterates `ballsPocketedThisTurn`, skips cue/black balls, assigns shooter = first-pocketed ball's type, opponent = opposite
 - Monorepo: /client (React+Vite) and /server (Node+ws), each has own package.json and tsconfig.json
 - Client typecheck: `cd client && npm run typecheck` (tsc --noEmit with bundler moduleResolution)
@@ -162,4 +162,25 @@ Started: Thu Apr  9 16:00:30 CST 2026
   - "Always switch turns" is a placeholder; US-008 should implement "keep turn if you pot your group ball without foul"
   - Group assignment only fires when `playerGroups[0] === 'unassigned'` — safe to call every turn end
   - `1 - shooter` gives opponent index cleanly when shooter is `0|1` (TypeScript requires explicit cast to `PlayerGroup`)
+---
+
+## 2026-04-09 - US-008
+- Implemented server-side foul detection and ball-in-hand placement restriction
+- Files changed:
+  - server/src/index.ts (collision tracking, foul logic in handleTurnEnd, half-court restriction)
+- What was implemented:
+  - `Room` extended with `cueBallFirstContact: number|null` and `cueBallPocketedThisTurn: boolean`
+  - Matter.js `Events.on(engine, 'collisionStart')` registered in `startPhysicsLoop` to track first ball-ball contact with cue ball (ignores wall contacts by checking `label.startsWith('ball_')`)
+  - Physics loop: if cue ball (id=0) appears in `newlyPocketed`, sets `cueBallPocketedThisTurn = true`
+  - `handleTurnEnd` foul detection: (1) cue pocketed, (2) groups assigned AND first contact was not own group
+  - Foul outcome: switch turn + set `canPlaceCueBall=true` + `foulPending=true`
+  - `place_cue_ball` handler: added half-court restriction — player 0 → left half (x ≤ TABLE_WIDTH/2), player 1 → right half (x ≥ TABLE_WIDTH/2)
+  - `shoot` handler: blocked when `canPlaceCueBall=true`; resets `cueBallFirstContact` and `cueBallPocketedThisTurn` on each shot
+  - `place_cue_ball` clears `foulPending` when placement completes
+- **Learnings for future iterations:**
+  - `Events.on(physics.engine, 'collisionStart', handler)` fires during Engine.update(); register once in startPhysicsLoop, closure captures room for tracking
+  - Collision pairs: check `bodyA.label === 'ball_0'` or `bodyB.label === 'ball_0'`; ignore if other body label doesn't start with `ball_` (walls have label `wall`)
+  - Half-court rule: player 0 = left half (x ≤ TABLE_WIDTH/2), player 1 = right half (x ≥ TABLE_WIDTH/2)
+  - When `canPlaceCueBall=true`, cue ball may or may not be pocketed; place_cue_ball handler removes old body first (safe for both cases)
+  - Foul tracking fields must be reset in BOTH shoot handler (start of new shot) and handleTurnEnd (after turn resolves)
 ---
