@@ -1,6 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { GameState, ServerMessage, ClientMessage } from './types'
+import type { GameState, ServerMessage, ClientMessage, PlayerGroup } from './types'
 import BilliardTable from './BilliardTable'
+
+function groupLabel(group: PlayerGroup): string {
+  if (group === 'solid') return '纯色 ①–⑦'
+  if (group === 'stripe') return '花色 ⑨–⑮'
+  return '未定'
+}
+
+function remainingBalls(gameState: GameState, group: PlayerGroup): number | null {
+  if (group === 'unassigned') return null
+  const type = group === 'solid' ? 'solid' : 'stripe'
+  return gameState.balls.filter(b => b.type === type && !b.pocketed).length
+}
 
 const WS_URL = 'ws://localhost:8080'
 
@@ -219,12 +231,40 @@ export default function App() {
           </div>
         )}
         <div style={styles.gameTopBar}>
-          <span style={styles.playerLabel}>
-            玩家 {state.playerIndex === 0 ? '1' : '2'}
-          </span>
-          <span style={styles.turnIndicator}>
-            {state.gameState?.currentPlayer === state.playerIndex ? '轮到你了' : '等待对手'}
-          </span>
+          {[0, 1].map(pi => {
+            const gs = state.gameState
+            const isMe = pi === state.playerIndex
+            const isCurrentTurn = gs?.currentPlayer === pi
+            const group = gs?.playerGroups[pi] ?? 'unassigned'
+            const remaining = gs ? remainingBalls(gs, group) : null
+            return (
+              <div
+                key={pi}
+                style={{
+                  ...styles.playerPanel,
+                  ...(isCurrentTurn ? styles.playerPanelActive : {}),
+                }}
+              >
+                <div style={styles.playerPanelName}>
+                  {isMe ? '你' : '对手'}
+                  {isCurrentTurn && <span style={styles.turnBadge}>● 回合</span>}
+                </div>
+                <div style={styles.playerPanelGroup}>{groupLabel(group)}</div>
+                {remaining !== null && (
+                  <div style={styles.playerPanelCount}>剩余 {remaining} 颗</div>
+                )}
+              </div>
+            )
+          })}
+          <div style={styles.gameStatus}>
+            {state.gameState?.canPlaceCueBall && state.gameState.currentPlayer === state.playerIndex
+              ? '🎱 放置白球'
+              : state.gameState?.ballsMoving
+              ? '⏳ 运动中…'
+              : state.gameState?.currentPlayer === state.playerIndex
+              ? '轮到你了'
+              : '等待对手…'}
+          </div>
         </div>
         <div style={styles.tableWrapper}>
           {state.gameState && (
@@ -411,20 +451,56 @@ const styles: Record<string, React.CSSProperties> = {
   gameTopBar: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '10px 24px',
+    justifyContent: 'center',
+    gap: 16,
+    padding: '8px 24px',
     background: '#1a2a1a',
     borderBottom: '1px solid #2d4a2d',
     flexShrink: 0,
+    flexWrap: 'wrap',
   },
-  playerLabel: {
+  playerPanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '6px 20px',
+    borderRadius: 8,
+    border: '1px solid #2d4a2d',
+    minWidth: 120,
+    gap: 2,
+  },
+  playerPanelActive: {
+    border: '1px solid #4caf50',
+    background: '#1e3a1e',
+    boxShadow: '0 0 8px rgba(76, 175, 80, 0.3)',
+  },
+  playerPanelName: {
     fontSize: 15,
+    fontWeight: 700,
     color: '#7fc97f',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  turnBadge: {
+    fontSize: 11,
+    color: '#4caf50',
     fontWeight: 600,
   },
-  turnIndicator: {
-    fontSize: 14,
+  playerPanelGroup: {
+    fontSize: 12,
     color: '#aaa',
+  },
+  playerPanelCount: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: 600,
+  },
+  gameStatus: {
+    fontSize: 14,
+    color: '#ccc',
+    minWidth: 100,
+    textAlign: 'center',
   },
   tableWrapper: {
     flex: 1,
