@@ -320,6 +320,16 @@ function broadcastGameState(room: Room): void {
   }
 }
 
+function broadcastGameOver(room: Room, winner: 0 | 1): void {
+  const msg: ServerMessage = { type: 'game_over', winner }
+  const json = JSON.stringify(msg)
+  for (const player of room.players) {
+    if (player.readyState === WebSocket.OPEN) {
+      player.send(json)
+    }
+  }
+}
+
 /**
  * Assigns ball groups after the first non-black-8 ball is pocketed.
  * shooter gets the group matching the first pocketed ball's type;
@@ -353,6 +363,46 @@ function handleTurnEnd(room: Room): void {
     // Assign groups if not yet assigned (must happen before foul check)
     assignGroupsIfNeeded(state, room.ballsPocketedThisTurn, shooter)
   }
+
+  // ── Win/loss detection: black 8 pocketed ──────────────────────────────────
+  if (shooter !== null && room.ballsPocketedThisTurn.includes(8)) {
+    const opponent = (1 - shooter) as 0 | 1
+    let winner: 0 | 1
+
+    if (room.cueBallPocketedThisTurn) {
+      // Cue ball and black 8 both pocketed → shooter loses
+      winner = opponent
+    } else {
+      const shooterGroup = state.playerGroups[shooter]
+      if (shooterGroup === 'unassigned') {
+        // Groups not yet determined (8 on break) → shooter loses
+        winner = opponent
+      } else {
+        // Check if shooter has cleared all their group balls
+        const remaining = state.balls.filter(
+          (b) => b.type === shooterGroup && !b.pocketed,
+        )
+        winner = remaining.length === 0 ? shooter : opponent
+      }
+    }
+
+    // Finalise game state
+    state.phase = 'game_over'
+    state.winner = winner
+    state.ballsMoving = false
+
+    // Reset per-turn tracking before exiting
+    room.ballsPocketedThisTurn = []
+    room.shooterThisTurn = null
+    room.cueBallFirstContact = null
+    room.cueBallPocketedThisTurn = false
+
+    broadcastGameState(room)
+    broadcastGameOver(room, winner)
+    stopPhysicsLoop(room)
+    return
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Detect foul
   let isFoul = false
