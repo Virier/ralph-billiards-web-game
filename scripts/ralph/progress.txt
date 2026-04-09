@@ -7,13 +7,16 @@
 - Ball coordinate space: server ball (x,y) positions use full TABLE_WIDTH×TABLE_HEIGHT space (no rail offset); canvas renders rails as visual decoration on top
 - Root package.json scripts: dev:client, dev:server, typecheck
 - Server message protocol: JSON over WebSocket; client sends `join_room` (roomCode: "" to create, code to join)
-- Server sends: `room_created`, `room_joined`, `error`, `start_game` (with GameState + playerIndex), `opponent_disconnected`
+- Server sends: `room_created`, `room_joined`, `error`, `start_game` (with GameState + playerIndex), `opponent_disconnected`, `game_state` (per frame), `game_over`
 - Game state types (Ball, GameState) exported from server/src/index.ts for future sharing
 - Client shared types live in `client/src/types.ts` (Ball, GameState, ServerMessage, ClientMessage)
 - Table dimensions: 1400×700, ballRadius=14, rackX=TABLE_WIDTH*0.75 (foot spot), cueBall at x=TABLE_WIDTH*0.25
 - Use `import { randomUUID } from 'crypto'` for Node.js UUID generation (not global crypto)
 - Client App uses page-based state machine: 'lobby' | 'waiting' | 'game' | 'game_over'
 - WebSocket is stored in useRef (wsRef) to avoid re-renders; connect only when user takes action
+- Physics: Matter.js per-room engine, ballBodies Map<id, Body>, 60fps setInterval; pocket detection by distance (POCKET_RADIUS + BALL_RADIUS); walls segmented with gaps at each pocket
+- TypeScript: never cast Array.indexOf() to 0|1 directly — it can return -1; check then cast
+- MAX_SHOOT_POWER = 0.08 scales power (0-100%) to Matter.js force; shoot handler is in server/src/index.ts
 
 # Ralph Progress Log
 Started: Thu Apr  9 16:00:30 CST 2026
@@ -87,4 +90,28 @@ Started: Thu Apr  9 16:00:30 CST 2026
   - ctx.save()/restore() around each ball for shadow+clip isolation
   - BilliardTable exports TABLE_WIDTH/HEIGHT/BALL_RADIUS constants — future interaction code (US-006) should import from here
   - Note: browser verification was not done (no browser tools available) — manual check recommended
+---
+
+## 2026-04-09 - US-005
+- Implemented server-side Matter.js physics loop + state broadcast
+- Files changed:
+  - server/package.json (added matter-js dependency)
+  - server/package-lock.json
+  - server/src/index.ts (physics engine, per-room loop, pocket detection, broadcast)
+- What was implemented:
+  - `initPhysics()`: creates Matter.js Engine with gravity.scale=0, adds circle bodies for all balls and segmented wall bodies with gaps at pockets
+  - `startPhysicsLoop()`: 60fps setInterval calling Engine.update(engine, 1000/60)
+  - `syncPhysicsToState()`: copies body.position and body.velocity back to GameState.balls
+  - `checkPocketed()`: removes ball bodies from world when center within POCKET_RADIUS+BALL_RADIUS of any pocket
+  - `allBallsStopped()`: returns true when all non-pocketed ball speeds < 0.5
+  - Broadcasts game_state every frame while moving, plus one final frame when stopped
+  - `shoot` handler: validates turn/moving/phase, applies Body.applyForce to cue ball
+  - `place_cue_ball` handler: validates bounds, recreates cue ball body at specified position
+  - `stopPhysicsLoop()`: clearInterval on room teardown
+- **Learnings for future iterations:**
+  - Matter.js works fine in Node.js (no DOM required for physics engine)
+  - `import Matter from 'matter-js'` + destructure `{ Engine, World, Bodies, Body, Events }` works with @types/matter-js
+  - Wall segments with pocket gaps: `wallSegments(from, to, pocketCenters[])` helper builds segment array skipping ±POCKET_GAP around each pocket
+  - TypeScript strict check: Array.indexOf() returns `number` which includes -1; cannot cast to `0|1` without a -1 check first
+  - Physics per-room: Room interface extended with `physics: PhysicsState | null` holding engine + ballBodies Map + intervalId
 ---
