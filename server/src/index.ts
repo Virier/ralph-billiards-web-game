@@ -74,6 +74,8 @@ interface Room {
   playerIds: string[]
   state: GameState | null
   physics: PhysicsState | null
+  ballsPocketedThisTurn: number[] // ball IDs pocketed this shot, in order
+  shooterThisTurn: 0 | 1 | null  // which player fired the current shot
 }
 
 // Client → Server messages
@@ -271,7 +273,9 @@ function syncPhysicsToState(state: GameState, physics: PhysicsState): void {
   }
 }
 
-function checkPocketed(state: GameState, physics: PhysicsState): void {
+/** Returns ball IDs that were pocketed this frame, in the order they appear in state.balls */
+function checkPocketed(state: GameState, physics: PhysicsState): number[] {
+  const newlyPocketed: number[] = []
   for (const ball of state.balls) {
     if (ball.pocketed) continue
     const body = physics.ballBodies.get(ball.id)
@@ -286,10 +290,12 @@ function checkPocketed(state: GameState, physics: PhysicsState): void {
         ball.pocketed = true
         World.remove(physics.engine.world, body)
         physics.ballBodies.delete(ball.id)
+        newlyPocketed.push(ball.id)
         break
       }
     }
   }
+  return newlyPocketed
 }
 
 function allBallsStopped(state: GameState): boolean {
@@ -312,6 +318,48 @@ function broadcastGameState(room: Room): void {
   }
 }
 
+/**
+ * Assigns ball groups after the first non-black-8 ball is pocketed.
+ * shooter gets the group matching the first pocketed ball's type;
+ * opponent gets the other group.
+ */
+function assignGroupsIfNeeded(
+  state: GameState,
+  ballsPocketed: number[],
+  shooter: 0 | 1,
+): void {
+  if (state.playerGroups[0] !== 'unassigned') return // already assigned
+  for (const ballId of ballsPocketed) {
+    const ball = state.balls.find((b) => b.id === ballId)
+    if (!ball || ball.type === 'cue' || ball.type === 'black') continue
+    // First non-black, non-cue ball determines the groups
+    const shooterGroup: PlayerGroup = ball.type === 'solid' ? 'solid' : 'stripe'
+    const opponentGroup: PlayerGroup = shooterGroup === 'solid' ? 'stripe' : 'solid'
+    state.playerGroups[shooter] = shooterGroup
+    state.playerGroups[1 - shooter] = opponentGroup
+    return
+  }
+}
+
+/** Called when all balls come to rest after a shot */
+function handleTurnEnd(room: Room): void {
+  if (!room.state) return
+  const state = room.state
+  const shooter = room.shooterThisTurn
+
+  if (shooter !== null) {
+    // Assign groups if not yet assigned
+    assignGroupsIfNeeded(state, room.ballsPocketedThisTurn, shooter)
+  }
+
+  // Reset per-turn tracking
+  room.ballsPocketedThisTurn = []
+  room.shooterThisTurn = null
+
+  // Switch turns (basic: always switch; foul/keep-turn logic handled in US-008/009)
+  state.currentPlayer = state.currentPlayer === 0 ? 1 : 0
+}
+
 function startPhysicsLoop(room: Room): void {
   if (!room.state || !room.physics) return
   const physics = room.physics
@@ -320,10 +368,18 @@ function startPhysicsLoop(room: Room): void {
   physics.intervalId = setInterval(() => {
     Engine.update(physics.engine, PHYSICS_DT)
     syncPhysicsToState(state, physics)
-    checkPocketed(state, physics)
+    const newlyPocketed = checkPocketed(state, physics)
+    if (newlyPocketed.length > 0) {
+      room.ballsPocketedThisTurn.push(...newlyPocketed)
+    }
 
     const wasMoved = state.ballsMoving
     state.ballsMoving = !allBallsStopped(state)
+
+    // When balls just came to rest, handle turn end logic
+    if (wasMoved && !state.ballsMoving) {
+      handleTurnEnd(room)
+    }
 
     // Broadcast every frame while balls are moving, or once when they stop
     if (state.ballsMoving || wasMoved) {
@@ -387,6 +443,8 @@ wss.on('connection', (ws) => {
           playerIds: [playerId],
           state: null,
           physics: null,
+          ballsPocketedThisTurn: [],
+          shooterThisTurn: null,
         }
         rooms.set(code, room)
         playerRoom.set(ws, code)
@@ -451,6 +509,9 @@ wss.on('connection', (ws) => {
 
       Body.applyForce(cueBallBody, cueBallBody.position, { x: fx, y: fy })
       room.state.ballsMoving = true
+      // Track shooter and reset per-turn pocketed list
+      room.shooterThisTurn = playerIndex
+      room.ballsPocketedThisTurn = []
     } else if (message.type === 'place_cue_ball') {
       const roomCode = playerRoom.get(ws)
       if (!roomCode) return
