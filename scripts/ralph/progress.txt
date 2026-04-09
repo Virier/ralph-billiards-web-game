@@ -4,6 +4,11 @@
 - Server typecheck: `cd server && npm run typecheck` (tsc --noEmit with NodeNext module)
 - Server dev runner: `tsx watch src/index.ts` (no ts-node)
 - Root package.json scripts: dev:client, dev:server, typecheck
+- Server message protocol: JSON over WebSocket; client sends `join_room` (roomCode: "" to create, code to join)
+- Server sends: `room_created`, `room_joined`, `error`, `start_game` (with GameState + playerIndex), `opponent_disconnected`
+- Game state types (Ball, GameState) exported from server/src/index.ts for future sharing
+- Table dimensions: 1400×700, ballRadius=14, rackX=TABLE_WIDTH*0.75 (foot spot), cueBall at x=TABLE_WIDTH*0.25
+- Use `import { randomUUID } from 'crypto'` for Node.js UUID generation (not global crypto)
 
 # Ralph Progress Log
 Started: Thu Apr  9 16:00:30 CST 2026
@@ -22,4 +27,21 @@ Started: Thu Apr  9 16:00:30 CST 2026
   - Server uses `module: "NodeNext"` and `moduleResolution: "NodeNext"` for ESM-style imports
   - Use `tsx watch` for server hot reload (dev dependency: tsx)
   - node_modules were accidentally committed first time — .gitignore added afterward
+---
+
+## 2026-04-09 - US-002
+- Implemented full WebSocket room management on the server
+- Files changed:
+  - server/src/index.ts (full rewrite with types + room logic)
+- What was implemented:
+  - `join_room` handler: empty roomCode → create room + 6-char code; valid roomCode → join; invalid → error response
+  - Room fills at 2 players → `start_game` broadcast with initial GameState and playerIndex (0 or 1)
+  - On disconnect → `opponent_disconnected` sent to remaining player, room cleaned up
+  - `createInitialGameState()`: 16 balls with correct positions (triangle rack at 3/4 table, cue ball at 1/4)
+  - Exported Ball and GameState interfaces for future client reuse
+- **Learnings for future iterations:**
+  - Use `import { randomUUID } from 'crypto'` (not `crypto.randomUUID()`) with NodeNext module system
+  - `WebSocket.OPEN` check before sending prevents errors when client closes mid-message
+  - `playerRoom` Map (ws → roomCode) enables O(1) room lookup on disconnect
+  - Both players receive their own playerIndex (0 or 1) in `start_game` so client knows which player it is
 ---
