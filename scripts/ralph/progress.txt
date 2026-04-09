@@ -205,3 +205,21 @@ Started: Thu Apr  9 16:00:30 CST 2026
   - `state.phase !== 'playing'` guard in shoot handler already prevents shooting after game over — no extra guard needed
   - `GameState.winner` is `number | null` in the type but the game_over event sends `0 | 1` — keep consistent
 ---
+
+## 2026-04-09 - US-010
+- Implemented frontend turn status UI in the game top bar
+- Files changed:
+  - client/src/App.tsx (replaced simple top bar with 2-panel status + center status indicator)
+- What was implemented:
+  - `groupLabel(group)`: returns '纯色 ①–⑦' / '花色 ⑨–⑮' / '未定'
+  - `remainingBalls(gameState, group)`: counts non-pocketed balls for the given group type
+  - Top bar now renders 2 player panels side-by-side, each showing: "你"/"对手" label, group name, remaining ball count
+  - Active panel (current turn player) gets green border + background highlight + "● 回合" badge
+  - Center status indicator shows context-aware text: place cue ball / moving / your turn / waiting for opponent
+  - Panels auto-update every time `game_state` event arrives (React state update)
+- **Learnings for future iterations:**
+  - `[0, 1].map(pi => ...)` pattern is clean for rendering both players symmetrically
+  - Spread style with conditional: `{ ...styles.base, ...(condition ? styles.active : {}) }` works in inline styles
+  - `gameState.balls.filter(b => b.type === type && !b.pocketed).length` is the standard remaining-count pattern
+  - Browser verification not done (no browser tools available) — manual check recommended
+---
