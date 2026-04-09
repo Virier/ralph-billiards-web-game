@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import type { Ball, GameState } from './types'
 
 export const TABLE_WIDTH = 1400
@@ -7,6 +7,7 @@ export const BALL_RADIUS = 14
 
 const RAIL_WIDTH = 44
 const POCKET_RADIUS = 22
+const MAX_DRAG = 150 // canvas pixels = 100% power
 
 // Colors for balls 1-15 (9-15 share colors with 1-7 as stripes)
 const BALL_COLORS: Record<number, string> = {
@@ -197,14 +198,115 @@ function drawBall(ctx: CanvasRenderingContext2D, ball: Ball): void {
   }
 }
 
+function drawAimingOverlay(
+  ctx: CanvasRenderingContext2D,
+  cueBall: Ball,
+  cursorX: number,
+  cursorY: number,
+  isDragging: boolean,
+): void {
+  const dx = cursorX - cueBall.x
+  const dy = cursorY - cueBall.y
+  const dist = Math.hypot(dx, dy)
+  if (dist < 1) return
+
+  const dirX = dx / dist
+  const dirY = dy / dist
+  const power = Math.min(dist, MAX_DRAG) / MAX_DRAG
+
+  // Aiming line (dashed ray from cue ball in shooting direction)
+  ctx.save()
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)'
+  ctx.lineWidth = 1.5
+  ctx.setLineDash([12, 8])
+  ctx.beginPath()
+  ctx.moveTo(cueBall.x, cueBall.y)
+  ctx.lineTo(cueBall.x + dirX * 400, cueBall.y + dirY * 400)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // Ghost ball at end of aiming line
+  const ghostX = cueBall.x + dirX * 400
+  const ghostY = cueBall.y + dirY * 400
+  ctx.beginPath()
+  ctx.arc(ghostX, ghostY, BALL_RADIUS, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  ctx.restore()
+
+  // Power bar (only shown while dragging)
+  if (isDragging) {
+    const BAR_W = 300
+    const BAR_H = 14
+    const BAR_X = TABLE_WIDTH / 2 - BAR_W / 2
+    const BAR_Y = TABLE_HEIGHT - RAIL_WIDTH / 2 - BAR_H / 2
+
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
+    ctx.fillRect(BAR_X - 4, BAR_Y - 20, BAR_W + 8, BAR_H + 24)
+
+    // Label
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 13px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText(`力度 ${Math.round(power * 100)}%`, TABLE_WIDTH / 2, BAR_Y - 2)
+
+    // Fill
+    const barColor = power < 0.5 ? '#4caf50' : power < 0.8 ? '#ff9800' : '#f44336'
+    ctx.fillStyle = 'rgba(255,255,255,0.15)'
+    ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H)
+    if (power > 0) {
+      ctx.fillStyle = barColor
+      ctx.fillRect(BAR_X, BAR_Y, BAR_W * power, BAR_H)
+    }
+
+    // Border
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(BAR_X, BAR_Y, BAR_W, BAR_H)
+  }
+}
+
+interface AimState {
+  cursorX: number
+  cursorY: number
+  isDragging: boolean
+}
+
 interface Props {
   gameState: GameState
   playerIndex: 0 | 1
+  isMyTurn: boolean
+  ballsMoving: boolean
+  onShoot: (dirX: number, dirY: number, power: number) => void
 }
 
-export default function BilliardTable({ gameState }: Props) {
+export default function BilliardTable({ gameState, isMyTurn, ballsMoving, onShoot }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [aimState, setAimState] = useState<AimState | null>(null)
 
+  // Refs for stable event handler access
+  const canAimRef = useRef(false)
+  const gameStateRef = useRef(gameState)
+  const onShootRef = useRef(onShoot)
+
+  const canAim = isMyTurn && !ballsMoving
+
+  useEffect(() => { canAimRef.current = canAim }, [canAim])
+  useEffect(() => { gameStateRef.current = gameState }, [gameState])
+  useEffect(() => { onShootRef.current = onShoot }, [onShoot])
+
+  // Clear aim when it's no longer our turn or balls start moving
+  useEffect(() => {
+    if (!canAim) {
+      setAimState(null)
+    }
+  }, [canAim])
+
+  // Draw everything
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -216,7 +318,81 @@ export default function BilliardTable({ gameState }: Props) {
     for (const ball of gameState.balls) {
       drawBall(ctx, ball)
     }
-  }, [gameState])
+
+    // Aiming overlay
+    if (canAim && aimState) {
+      const cueBall = gameState.balls.find(b => b.type === 'cue' && !b.pocketed)
+      if (cueBall) {
+        drawAimingOverlay(ctx, cueBall, aimState.cursorX, aimState.cursorY, aimState.isDragging)
+      }
+    }
+  }, [gameState, aimState, canAim])
+
+  const toCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: (e.clientX - rect.left) * (TABLE_WIDTH / rect.width),
+      y: (e.clientY - rect.top) * (TABLE_HEIGHT / rect.height),
+    }
+  }
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canAimRef.current) return
+    const pos = toCanvasCoords(e)
+    if (!pos) return
+    setAimState(prev => ({
+      cursorX: pos.x,
+      cursorY: pos.y,
+      isDragging: prev?.isDragging ?? false,
+    }))
+  }, [])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canAimRef.current) return
+    const pos = toCanvasCoords(e)
+    if (!pos) return
+    setAimState({
+      cursorX: pos.x,
+      cursorY: pos.y,
+      isDragging: true,
+    })
+  }, [])
+
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canAimRef.current) return
+    const pos = toCanvasCoords(e)
+    if (!pos) return
+
+    setAimState(prev => {
+      if (!prev?.isDragging) return prev
+
+      const cueBall = gameStateRef.current.balls.find(b => b.type === 'cue' && !b.pocketed)
+      if (!cueBall) return { ...prev, isDragging: false }
+
+      const dx = pos.x - cueBall.x
+      const dy = pos.y - cueBall.y
+      const dist = Math.hypot(dx, dy)
+
+      if (dist >= 5) {
+        const dirX = dx / dist
+        const dirY = dy / dist
+        const power = Math.min(dist, MAX_DRAG) / MAX_DRAG
+        onShootRef.current(dirX, dirY, power)
+      }
+
+      return { ...prev, isDragging: false }
+    })
+  }, [])
+
+  const handleMouseLeave = useCallback(() => {
+    setAimState(prev => {
+      // Keep aim state if dragging (user may re-enter canvas)
+      if (prev?.isDragging) return prev
+      return null
+    })
+  }, [])
 
   return (
     <canvas
@@ -230,7 +406,12 @@ export default function BilliardTable({ gameState }: Props) {
         height: 'auto',
         borderRadius: 4,
         boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        cursor: canAim ? 'crosshair' : 'default',
       }}
+      onMouseMove={handleMouseMove}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseLeave}
     />
   )
 }

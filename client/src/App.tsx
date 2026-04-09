@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GameState, ServerMessage, ClientMessage } from './types'
 import BilliardTable from './BilliardTable'
 
@@ -128,6 +128,13 @@ export default function App() {
     connectAndSend({ type: 'join_room', roomCode: code })
   }
 
+  const handleShoot = useCallback((dirX: number, dirY: number, power: number) => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const msg: ClientMessage = { type: 'shoot', dirX, dirY, power }
+    ws.send(JSON.stringify(msg))
+  }, [])
+
   const handleRestart = () => {
     wsRef.current?.close()
     wsRef.current = null
@@ -224,6 +231,9 @@ export default function App() {
             <BilliardTable
               gameState={state.gameState}
               playerIndex={state.playerIndex ?? 0}
+              isMyTurn={state.gameState.currentPlayer === state.playerIndex}
+              ballsMoving={state.gameState.ballsMoving}
+              onShoot={handleShoot}
             />
           )}
         </div>

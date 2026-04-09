@@ -17,6 +17,10 @@
 - Physics: Matter.js per-room engine, ballBodies Map<id, Body>, 60fps setInterval; pocket detection by distance (POCKET_RADIUS + BALL_RADIUS); walls segmented with gaps at each pocket
 - TypeScript: never cast Array.indexOf() to 0|1 directly — it can return -1; check then cast
 - MAX_SHOOT_POWER = 0.08 scales power (0-100%) to Matter.js force; shoot handler is in server/src/index.ts
+- BilliardTable.tsx props: isMyTurn/ballsMoving/onShoot; canAim = isMyTurn && !ballsMoving guards all mouse interaction
+- Use refs (canAimRef, gameStateRef, onShootRef) for stable useCallback handlers — no stale closure, no over-invalidation
+- Canvas mouse→logical coords: (e.clientX - rect.left) * (TABLE_WIDTH / rect.width)
+- Aiming: direction = normalize(cursor − cueBall); power = min(dist, 150) / 150 (canvas px)
 
 # Ralph Progress Log
 Started: Thu Apr  9 16:00:30 CST 2026
@@ -114,4 +118,26 @@ Started: Thu Apr  9 16:00:30 CST 2026
   - Wall segments with pocket gaps: `wallSegments(from, to, pocketCenters[])` helper builds segment array skipping ±POCKET_GAP around each pocket
   - TypeScript strict check: Array.indexOf() returns `number` which includes -1; cannot cast to `0|1` without a -1 check first
   - Physics per-room: Room interface extended with `physics: PhysicsState | null` holding engine + ballBodies Map + intervalId
+---
+
+## 2026-04-09 - US-006
+- Implemented client-side aiming and shooting interaction
+- Files changed:
+  - client/src/BilliardTable.tsx (add AimState, mouse handlers, drawAimingOverlay, new Props)
+  - client/src/App.tsx (add handleShoot, pass isMyTurn/ballsMoving/onShoot to BilliardTable)
+- What was implemented:
+  - `AimState { cursorX, cursorY, isDragging }` tracked in useState; cleared when canAim becomes false
+  - `drawAimingOverlay()`: dashed ray from cue ball toward cursor (400px), ghost ball at ray end; power bar shown only while dragging
+  - Power bar: bottom-center of canvas, color-coded (green/orange/red), shows "力度 N%" label
+  - Cursor changes to `crosshair` when it's the player's turn and balls are stopped
+  - `onMouseMove`: tracks cursor for aiming line; `onMouseDown`: sets isDragging=true; `onMouseUp`: computes dirX/dirY/power and calls onShoot
+  - `onMouseLeave`: clears aim unless dragging (so user can drag outside canvas edge)
+  - Ref pattern: canAimRef/gameStateRef/onShootRef used inside useCallback to avoid stale closures
+  - App.tsx: `handleShoot` sends `{ type: 'shoot', dirX, dirY, power }` via WebSocket if connection open
+  - isMyTurn = `gameState.currentPlayer === playerIndex`; ballsMoving = `gameState.ballsMoving`
+- **Learnings for future iterations:**
+  - Use stable refs inside useCallback when handler needs current prop/state — cleaner than adding everything to deps
+  - setAimState with functional update (`prev =>`) works well for shoot logic — reads current aim without needing aimState in deps
+  - Ghost ball at end of aiming line gives visual feedback without complex reflection logic
+  - Note: browser verification was not done (no browser tools available) — manual check recommended
 ---
