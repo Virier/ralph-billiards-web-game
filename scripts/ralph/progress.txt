@@ -8,6 +8,16 @@
 Started: Fri Apr 10 10:36:44 CST 2026
 ---
 
+## 2026-04-10 10:45 - US-013
+- Updated `evaluateTurnEnd` step 3 foul detection: when `cueBallFirstContact` is the 8-ball, check if shooter's group balls remain; only foul if they do
+- Updated step 2 (8-ball pocketed): set `isFoul: true` when 8-ball pocketed illegally (cue ball also pocketed, or shooter still has group balls)
+- Files changed: `server/src/gameLogic.ts`
+- **Learnings for future iterations:**
+  - Step 2 returns early when 8-ball pocketed, so step 3 foul check only runs when 8-ball is NOT pocketed
+  - `state.balls` includes pocketed balls; always filter with `!b.pocketed` when checking "remaining" balls
+  - Groups may change mid-function (step 1 mutates); in step 3, `state.playerGroups[shooter]` is already post-assignment
+---
+
 ## 2026-04-10 10:40 - US-012
 - Added `keepTurn: boolean` field to `TurnResult` interface
 - Updated `evaluateTurnEnd` to compute `keepTurn`: true when no foul and own-group ball pocketed (or break phase with any non-cue/non-black ball pocketed)
