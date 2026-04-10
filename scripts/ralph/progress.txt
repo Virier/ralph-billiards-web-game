@@ -3,9 +3,26 @@
 - `evaluateTurnEnd` mutates state (calls `assignGroupsIfNeeded`) — capture pre-mutation state if needed
 - Tests use vitest, run with `cd server && npm test`; typecheck with `npx tsc --noEmit` from root
 - `TurnResult` interface and `evaluateTurnEnd` are the core of all turn-end rule logic
+- Browser testing: server on port 8080 (WebSocket), client on port 5173 (Vite); use `dev-browser` CLI for UI verification
+- `dev-browser` screenshots save to `~/.dev-browser/tmp/`; use `page.snapshotForAI()` for snapshot-based assertions
 
 # Ralph Progress Log
 Started: Fri Apr 10 10:36:44 CST 2026
+---
+
+## 2026-04-10 11:20 - US-017
+- Verified lobby and room flow in browser using dev-browser skill
+- Screenshots saved to ~/.dev-browser/tmp/: us017-01-homepage.png, us017-02-room-created.png, us017-03-invalid-room.png
+- Verified: homepage shows "创建房间" and "加入房间" buttons (snapshot confirmed both buttons present)
+- Verified: clicking "创建房间" shows 6-digit room code (e.g., O5MFZR) and "等待对手加入" waiting UI
+- Verified: entering invalid room code "ZZZZZZ" shows error "房间不存在，请检查房间码"
+- Files changed: scripts/ralph/prd.json (passes: true for US-017)
+- **Learnings for future iterations:**
+  - dev-browser `saveScreenshot` saves to `~/.dev-browser/tmp/<name>.png`
+  - Server runs on port 8080 (WebSocket), client on port 5173 (Vite)
+  - `page.snapshotForAI()` is reliable for verifying UI text content without screenshots
+  - Use `page.goto()` to navigate back to homepage between test steps
+  - Button clicks for 创建房间 need `getByRole("button", { name: "创建房间" })` (ref selectors are session-specific)
 ---
 
 ## 2026-04-10 10:45 - US-013
