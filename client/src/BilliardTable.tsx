@@ -443,6 +443,78 @@ export default function BilliardTable({ gameState, playerIndex, isMyTurn, ballsM
     })
   }, [])
 
+  // Touch event handlers for Mac touchpad and mobile devices
+  const toTouchCanvasCoords = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas || e.touches.length === 0) return null
+    const touch = e.touches[0]
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: (touch.clientX - rect.left) * (TABLE_WIDTH / rect.width),
+      y: (touch.clientY - rect.top) * (TABLE_HEIGHT / rect.height),
+    }
+  }
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    if (!canAimRef.current) return
+    const pos = toTouchCanvasCoords(e)
+    if (!pos) return
+    setAimState(prev => ({
+      cursorX: pos.x,
+      cursorY: pos.y,
+      isDragging: prev?.isDragging ?? false,
+    }))
+  }, [])
+
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    if (!canAimRef.current) return
+    const pos = toTouchCanvasCoords(e)
+    if (!pos) return
+    setAimState({
+      cursorX: pos.x,
+      cursorY: pos.y,
+      isDragging: true,
+    })
+  }, [])
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    // Handle cue ball placement click
+    if (canPlaceCueBallRef.current) {
+      const pos = toTouchCanvasCoords(e)
+      if (pos) {
+        onPlaceCueBallRef.current(pos.x, pos.y)
+      }
+      return
+    }
+
+    if (!canAimRef.current) return
+    const pos = toTouchCanvasCoords(e)
+    if (!pos) return
+
+    setAimState(prev => {
+      if (!prev?.isDragging) return prev
+
+      const cueBall = gameStateRef.current.balls.find(b => b.type === 'cue' && !b.pocketed)
+      if (!cueBall) return { ...prev, isDragging: false }
+
+      const dx = pos.x - cueBall.x
+      const dy = pos.y - cueBall.y
+      const dist = Math.hypot(dx, dy)
+
+      if (dist >= 5) {
+        const dirX = dx / dist
+        const dirY = dy / dist
+        const power = Math.min(dist, MAX_DRAG) / MAX_DRAG
+        onShootRef.current(dirX, dirY, power)
+      }
+
+      return { ...prev, isDragging: false }
+    })
+  }, [])
+
   return (
     <canvas
       ref={canvasRef}
@@ -456,11 +528,15 @@ export default function BilliardTable({ gameState, playerIndex, isMyTurn, ballsM
         borderRadius: 4,
         boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
         cursor: canPlaceCueBall ? 'cell' : canAim ? 'crosshair' : 'default',
+        touchAction: 'none',
       }}
       onMouseMove={handleMouseMove}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
+      onTouchMove={handleTouchMove}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     />
   )
 }

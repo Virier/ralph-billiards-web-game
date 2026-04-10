@@ -1,0 +1,21 @@
+## Codebase Patterns
+- Game logic is pure functions in `server/src/gameLogic.ts`; server state/physics in `server/src/index.ts`
+- `evaluateTurnEnd` mutates state (calls `assignGroupsIfNeeded`) — capture pre-mutation state if needed
+- Tests use vitest, run with `cd server && npm test`; typecheck with `npx tsc --noEmit` from root
+- `TurnResult` interface and `evaluateTurnEnd` are the core of all turn-end rule logic
+- Browser testing: server on port 8080 (WebSocket), client on port 5173 (Vite); use `dev-browser` CLI for UI verification
+- `dev-browser` screenshots save to `~/.dev-browser/tmp/`; use `page.snapshotForAI()` for snapshot-based assertions
+- React 18 container key: `__reactContainer$xxxx` (not `__reactFiber`); find WebSocket via walkFiber checking `memoizedState.current instanceof WebSocket`
+- Server's shoot power is divided by 100; send `power: 100` via direct WS for full-power shot (client normalizes 0-1)
+- To start a real 2-player game: use two separate `browser.getPage()` instances (e.g., "player1", "player2"); Tab A creates room, Tab B joins with room code
+- `walkFiber` pattern for finding WS: walk child then sibling, limit depth to 300; check `memoizedState.current instanceof WebSocket`
+- Shoot via WS: `{type:'shoot', dirX, dirY, power}` where dirX/dirY are unit vectors and power=100 for full power
+- To trigger scratch (cue ball pocket): aim toward corner pocket with power=100
+- Ball-in-hand shows "🎱 点击放置白球" in status bar and dashed full-table highlight covering entire table
+- `page.snapshotForAI()` doesn't capture canvas content (raw graphics); use screenshots for visual canvas verification
+- Wall bodies have `label: 'wall'`; no-cushion foul only applies when groups assigned AND no balls pocketed
+- `anyCushionContact` parameter defaults to `true` in evaluateTurnEnd for backward-compatible tests
+
+# Ralph Progress Log
+Started: Thu Apr 10 2026
+---

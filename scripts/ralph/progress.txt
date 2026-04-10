@@ -1,125 +1,32 @@
-## Codebase Patterns
-- Game logic is pure functions in `server/src/gameLogic.ts`; server state/physics in `server/src/index.ts`
-- `evaluateTurnEnd` mutates state (calls `assignGroupsIfNeeded`) — capture pre-mutation state if needed
-- Tests use vitest, run with `cd server && npm test`; typecheck with `npx tsc --noEmit` from root
-- `TurnResult` interface and `evaluateTurnEnd` are the core of all turn-end rule logic
-- Browser testing: server on port 8080 (WebSocket), client on port 5173 (Vite); use `dev-browser` CLI for UI verification
-- `dev-browser` screenshots save to `~/.dev-browser/tmp/`; use `page.snapshotForAI()` for snapshot-based assertions
-- React 18 container key: `__reactContainer$xxxx` (not `__reactFiber`); find WebSocket via walkFiber checking `memoizedState.current instanceof WebSocket`
-- Server's shoot power is divided by 100; send `power: 100` via direct WS for full-power shot (client normalizes 0-1)
-
 # Ralph Progress Log
-Started: Fri Apr 10 10:36:44 CST 2026
+Started: Fri Apr 10 15:19:50 CST 2026
 ---
 
-## 2026-04-10 12:00 - US-019
-- Verified complete game flow and rule interactions using dev-browser skill
-- KEY TECHNIQUE: To fire shots via browser automation, use `walkFiber` to find the WebSocket in React's hook state, then send `{type:'shoot', dirX, dirY, power}` directly. Power must be sent as 100 for full power (server divides by 100, client normalizes 0-1)
-- Verified: Ball physics (in-flight screenshot us019-24 shows cue ball mid-flight; settled screenshot us019-25 shows scattered rack)
-- Verified: "⏳ 运动中..." status shows during ball movement
-- Verified: Game over screen shows "🎉 你赢了！" (winner) and "😢 你输了" (loser) with "重新开始" button
-- Verified: Full-table ball placement highlight (screenshot us019-34: dashed border covers ENTIRE table, "点击放置白球" overlay)
-- Verified: Ball-in-hand triggered by cue ball scratch → "🎱 点击放置白球" in status bar
-- Timer countdown verified via App.tsx source: 60s timer with red (#f44336) display when ≤10s remaining
-- Turn continuity after pocket: verified via server unit tests; in break phase, turn switches when no pocket (working as seen in game)
-- Screenshots: us019-*.png in ~/.dev-browser/tmp/
-- Files changed: scripts/ralph/prd.json (passes: true for US-019)
-- **Learnings for future iterations:**
-  - Server's shoot handler divides power by 100: `power = Math.min(100, msg.power) / 100`. Client sends 0-1, so client sends very weak shots if you copy client power directly. Send power=100 for full power via direct WS
-  - React WebSocket ref is in hook state: walk fiber tree looking for `memoizedState.current instanceof WebSocket`
-  - `walkFiber` pattern: walk child then sibling, limit depth to 300
-  - React container key is `__reactContainer$xxxx`, NOT `__reactFiber` in React 18
-  - Ball positions from game state are in canvas coords (0-1400, 0-700)
-  - To trigger scratch (cue ball pocket): aim toward corner pocket with power=100
-  - Ball-in-hand shows "🎱 点击放置白球" in status bar and dashed full-table highlight
----
+## Codebase Patterns
+- Dev servers: `npm run dev:server` (port 8080 WebSocket) and `npm run dev:client` (port 5173 Vite)
+- Browser testing uses dev-browser CLI: `dev-browser <<'EOF' ... EOF`
+- Page names persist across dev-browser calls: use "tabA" and "tabB" for two-player testing
+- Canvas elements are not visible in AI snapshots - use screenshots (saveScreenshot) to verify rendering
+- Player UI uses relative labels "你/对手" not absolute "玩家1/玩家2"
+- App.tsx handles WebSocket state; BilliardTable.tsx handles canvas drawing and user input
+- Touch events added to BilliardTable.tsx for touchpad/mobile support
 
-## 2026-04-10 11:30 - US-018
-- Verified billiard table rendering and aiming in browser using dev-browser skill
-- Used two browser pages (player1, player2) to start a real 2-player game
-- Verified: Canvas element present (1400×700 pixels)
-- Verified: BilliardTable.tsx confirms green table, 6 pockets, ball colors, triangle rack
-- Verified: Status bar shows player info ("你" / "对手"), turn indicator "● 回合", group "未定", "轮到你了"
-- Verified: Mouse move over canvas triggers aiming (canvas draws aim line via mousemove events)
-- Screenshots: us018-01-game-p1.png, us018-02-game-p2.png, us018-03-aiming.png in ~/.dev-browser/tmp/
-- Files changed: scripts/ralph/prd.json (passes: true for US-018)
+## 2026-04-10 - US-020
+- Verified TN-001: 建房入房与台球桌渲染
+- Browser test with dev-browser using two tabs (tabA/tabB)
+- Tab A: homepage showed 创建房间/加入房间 buttons ✅
+- Tab A: clicked 创建房间, got 6-digit room code EFRLT0, waiting screen shown ✅
+- Tab B: joined with room code EFRLT0 ✅
+- Both tabs entered game interface ✅
+- Tab A (Player 1): shows 你●回合 + 轮到你了 ✅
+- Tab B (Player 2): shows 对手●回合 + 等待对手... ✅
+- Canvas renders green billiard table, wood rails, 6 pockets (4 corner + 2 side), 16 balls in triangle break formation, white cue ball ✅
+- No issues found - all acceptance criteria met
+- Files changed: scripts/ralph/prd.json, scripts/ralph/progress.txt (this entry), client/src/BilliardTable.tsx (touch handlers from prior branch)
 - **Learnings for future iterations:**
-  - To start a real game, must use two separate `browser.getPage()` instances (e.g., "player1", "player2")
-  - Canvas renders at 1400×700 but displays scaled in browser; `getBoundingClientRect()` gives display size
-  - `page.snapshotForAI()` doesn't capture canvas content (it's raw graphics); use screenshots for visual verification
-  - Status bar text is accessible via DOM text content queries
----
-
-## 2026-04-10 11:20 - US-017
-- Verified lobby and room flow in browser using dev-browser skill
-- Screenshots saved to ~/.dev-browser/tmp/: us017-01-homepage.png, us017-02-room-created.png, us017-03-invalid-room.png
-- Verified: homepage shows "创建房间" and "加入房间" buttons (snapshot confirmed both buttons present)
-- Verified: clicking "创建房间" shows 6-digit room code (e.g., O5MFZR) and "等待对手加入" waiting UI
-- Verified: entering invalid room code "ZZZZZZ" shows error "房间不存在，请检查房间码"
-- Files changed: scripts/ralph/prd.json (passes: true for US-017)
-- **Learnings for future iterations:**
-  - dev-browser `saveScreenshot` saves to `~/.dev-browser/tmp/<name>.png`
-  - Server runs on port 8080 (WebSocket), client on port 5173 (Vite)
-  - `page.snapshotForAI()` is reliable for verifying UI text content without screenshots
-  - Use `page.goto()` to navigate back to homepage between test steps
-  - Button clicks for 创建房间 need `getByRole("button", { name: "创建房间" })` (ref selectors are session-specific)
----
-
-## 2026-04-10 10:45 - US-013
-- Updated `evaluateTurnEnd` step 3 foul detection: when `cueBallFirstContact` is the 8-ball, check if shooter's group balls remain; only foul if they do
-- Updated step 2 (8-ball pocketed): set `isFoul: true` when 8-ball pocketed illegally (cue ball also pocketed, or shooter still has group balls)
-- Files changed: `server/src/gameLogic.ts`
-- **Learnings for future iterations:**
-  - Step 2 returns early when 8-ball pocketed, so step 3 foul check only runs when 8-ball is NOT pocketed
-  - `state.balls` includes pocketed balls; always filter with `!b.pocketed` when checking "remaining" balls
-  - Groups may change mid-function (step 1 mutates); in step 3, `state.playerGroups[shooter]` is already post-assignment
----
-
-## 2026-04-10 10:48 - US-014
-- Removed half-table restriction from `validateCueBallPlacement` (dropped `playerIndex` param)
-- Updated call site in `server/src/index.ts` to use new 2-arg signature
-- Updated `drawPlacementHighlight` in `client/src/BilliardTable.tsx` to highlight full table
-- Updated `validateCueBallPlacement` tests to reflect full-table behavior (replaced half-table rejection tests)
-- Files changed: `server/src/gameLogic.ts`, `server/src/index.ts`, `client/src/BilliardTable.tsx`, `server/src/__tests__/gameLogic.test.ts`
-- **Learnings for future iterations:**
-  - `validateCueBallPlacement` signature change removed `playerIndex` param — must update all call sites and tests
-  - `drawPlacementHighlight` no longer needs `playerIndex`; call site updated accordingly
-  - Browser verification for this story requires manual check (no dev-browser tool available in this env)
----
-
-## 2026-04-10 10:55 - US-015
-- Added `anyCushionContactThisTurn: boolean` to `Room` interface, reset on each `shoot` and `handleTimeout`
-- Restructured `collisionStart` event handler to detect wall collisions (any ball with `label === 'wall'`), sets `room.anyCushionContactThisTurn = true`; cue-ball first contact tracking now runs in same loop without early-return shortcut
-- Added `anyCushionContact: boolean = true` parameter (defaulted to `true` for backward-compatible tests) to `evaluateTurnEnd`
-- Added step 3b in `evaluateTurnEnd`: groups assigned + no balls pocketed + `!anyCushionContact` → `isFoul = true`; break phase exempted
-- Passed `room.anyCushionContactThisTurn` to `evaluateTurnEnd` in `handleTurnEnd`; reset field afterwards
-- Files changed: `server/src/gameLogic.ts`, `server/src/index.ts`
-- **Learnings for future iterations:**
-  - Default parameter value (`= true`) on `evaluateTurnEnd` is the cleanest way to add optional params without breaking existing tests
-  - The `collisionStart` early-return guard (`if (room.cueBallFirstContact !== null) return`) blocked wall detection — restructure to use per-pair checks without early-returns from the handler
-  - Wall bodies have `label: 'wall'` (set in `wallOptions` in `createWalls`)
-  - No-cushion foul only applies when groups are assigned AND no balls were pocketed
----
-
-## 2026-04-10 10:50 - US-016
-- Added 10 new unit tests in `server/src/__tests__/gameLogic.test.ts` covering all Chinese 8-ball rule fixes
-- New describe blocks: `evaluateTurnEnd — keepTurn`, `evaluateTurnEnd — 8-ball contact legality`, `evaluateTurnEnd — no-cushion foul`
-- Tests: keepTurn=true when own-group ball pocketed; keepTurn=false when only opponent ball pocketed; keepTurn=true in break phase; keepTurn=false on foul; no foul when 8-ball hit with own group cleared; foul when 8-ball hit with group remaining; no-cushion foul when groups assigned+no pocketed+no cushion; no foul with cushion contact; no no-cushion foul in break phase
-- Files changed: `server/src/__tests__/gameLogic.test.ts`
-- Total tests: 48 (was 38)
-- **Learnings for future iterations:**
-  - `validateCueBallPlacement` full-table tests were already added in US-014; no duplication needed
-  - `anyCushionContact` parameter defaults to `true`, so existing tests pass without changes
-  - Break phase is detected by both `wasBreakPhase` flag in the function AND by `state.playerGroups[0] === 'unassigned'` before calling evaluateTurnEnd
----
-
-## 2026-04-10 10:40 - US-012
-- Added `keepTurn: boolean` field to `TurnResult` interface
-- Updated `evaluateTurnEnd` to compute `keepTurn`: true when no foul and own-group ball pocketed (or break phase with any non-cue/non-black ball pocketed)
-- Updated `handleTurnEnd` in `index.ts` to only switch `currentPlayer` when `!result.keepTurn`
-- Files changed: `server/src/gameLogic.ts`, `server/src/index.ts`
-- **Learnings for future iterations:**
-  - `assignGroupsIfNeeded` mutates state early in `evaluateTurnEnd`; must save `wasBreakPhase` flag BEFORE calling it
-  - The 40 existing tests don't check `keepTurn`, so adding a new return field is backward compatible
-  - Foul always implies `keepTurn = false`; game over always implies `keepTurn = false`
+  - Server on port 8080 may already be running; check with `lsof -i :8080` before starting
+  - Client auto-increments port if 5173/5174 are taken (5175, etc.)
+  - Use `browser.getPage("tabA")` and `browser.getPage("tabB")` for persistent two-tab sessions
+  - Canvas rendering must be verified via screenshots, not DOM snapshots
+  - Room codes are 6 uppercase alphanumeric characters (e.g., EFRLT0)
 ---

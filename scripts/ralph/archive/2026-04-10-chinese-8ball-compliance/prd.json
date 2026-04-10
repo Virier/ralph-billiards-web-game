@@ -21,8 +21,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 1,
-      "passes": true,
-      "notes": "Browser tested with dev-browser. Tab A: homepage shows 创建房间/加入房间 buttons, created room with code EFRLT0, waiting screen shown. Tab B: joined with room code, both entered game. Tab A shows 你●回合/轮到你了, Tab B shows 对手●回合/等待对手. Canvas renders green table, 6 pockets, 16 balls in break formation. All criteria passed."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-021",
