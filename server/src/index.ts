@@ -50,6 +50,7 @@ interface Room {
   shooterThisTurn: 0 | 1 | null
   cueBallFirstContact: number | null
   cueBallPocketedThisTurn: boolean
+  anyCushionContactThisTurn: boolean
   turnTimeoutId: ReturnType<typeof setTimeout> | null
 }
 
@@ -237,6 +238,7 @@ function handleTimeout(room: Room): void {
   room.shooterThisTurn = null
   room.cueBallFirstContact = null
   room.cueBallPocketedThisTurn = false
+  room.anyCushionContactThisTurn = false
   broadcastGameState(room)
   const json = JSON.stringify({ type: 'turn_timeout' } as ServerMessage)
   for (const player of room.players) {
@@ -264,6 +266,7 @@ function handleTurnEnd(room: Room): void {
     room.ballsPocketedThisTurn,
     room.cueBallPocketedThisTurn,
     room.cueBallFirstContact,
+    room.anyCushionContactThisTurn,
   )
 
   // Reset per-turn tracking
@@ -271,6 +274,7 @@ function handleTurnEnd(room: Room): void {
   room.shooterThisTurn = null
   room.cueBallFirstContact = null
   room.cueBallPocketedThisTurn = false
+  room.anyCushionContactThisTurn = false
 
   if (result.gameOver && result.winner !== undefined) {
     state.phase = 'game_over'
@@ -303,19 +307,32 @@ function startPhysicsLoop(room: Room): void {
   const state = room.state
 
   Events.on(physics.engine, 'collisionStart', (event) => {
-    if (room.cueBallFirstContact !== null) return
     if (!state.ballsMoving) return
     for (const pair of event.pairs) {
       const { bodyA, bodyB } = pair
-      const isCueA = bodyA.label === 'ball_0'
-      const isCueB = bodyB.label === 'ball_0'
-      if (!isCueA && !isCueB) continue
-      const otherBody = isCueA ? bodyB : bodyA
-      if (!otherBody.label.startsWith('ball_')) continue
-      const otherId = parseInt(otherBody.label.replace('ball_', ''), 10)
-      if (otherId === 0) continue
-      room.cueBallFirstContact = otherId
-      break
+
+      // Track cue ball first contact with another ball
+      if (room.cueBallFirstContact === null) {
+        const isCueA = bodyA.label === 'ball_0'
+        const isCueB = bodyB.label === 'ball_0'
+        if (isCueA || isCueB) {
+          const otherBody = isCueA ? bodyB : bodyA
+          if (otherBody.label.startsWith('ball_')) {
+            const otherId = parseInt(otherBody.label.replace('ball_', ''), 10)
+            if (otherId !== 0) room.cueBallFirstContact = otherId
+          }
+        }
+      }
+
+      // Track any ball hitting a cushion (wall)
+      const isWallA = bodyA.label === 'wall'
+      const isWallB = bodyB.label === 'wall'
+      if (isWallA || isWallB) {
+        const ballBody = isWallA ? bodyB : bodyA
+        if (ballBody.label.startsWith('ball_')) {
+          room.anyCushionContactThisTurn = true
+        }
+      }
     }
   })
 
@@ -370,6 +387,7 @@ wss.on('connection', (ws) => {
           state: null, physics: null,
           ballsPocketedThisTurn: [], shooterThisTurn: null,
           cueBallFirstContact: null, cueBallPocketedThisTurn: false,
+          anyCushionContactThisTurn: false,
           turnTimeoutId: null,
         }
         rooms.set(code, room)
@@ -422,6 +440,7 @@ wss.on('connection', (ws) => {
       room.ballsPocketedThisTurn = []
       room.cueBallFirstContact = null
       room.cueBallPocketedThisTurn = false
+      room.anyCushionContactThisTurn = false
     } else if (message.type === 'place_cue_ball') {
       const roomCode = playerRoom.get(ws)
       if (!roomCode) return

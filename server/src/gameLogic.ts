@@ -142,6 +142,7 @@ export function evaluateTurnEnd(
   ballsPocketedThisTurn: number[],
   cueBallPocketedThisTurn: boolean,
   cueBallFirstContact: number | null,
+  anyCushionContact: boolean = true,
 ): TurnResult {
   // ── 0. Record break phase before group assignment ────────────────────────
   const wasBreakPhase =
@@ -205,6 +206,13 @@ export function evaluateTurnEnd(
           }
         }
       }
+    }
+  }
+
+  // ── 3b. No-cushion foul (groups assigned + no balls pocketed + no cushion) ──
+  if (!isFoul && shooter !== null && !wasBreakPhase && state.playerGroups[0] !== 'unassigned') {
+    if (ballsPocketedThisTurn.length === 0 && !anyCushionContact) {
+      isFoul = true
     }
   }
 
