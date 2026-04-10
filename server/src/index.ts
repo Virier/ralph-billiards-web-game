@@ -433,7 +433,7 @@ wss.on('connection', (ws) => {
       const playerIndex = rawPlaceIdx as 0 | 1
       if (room.state.currentPlayer !== playerIndex) return
       const { x, y } = message
-      const err = validateCueBallPlacement(x, y, playerIndex)
+      const err = validateCueBallPlacement(x, y)
       if (err) { send(ws, { type: 'error', message: err }); return }
       placeCueBallBody(room, x, y)
       room.state.canPlaceCueBall = false

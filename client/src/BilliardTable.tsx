@@ -270,10 +270,10 @@ function drawAimingOverlay(
   }
 }
 
-function drawPlacementHighlight(ctx: CanvasRenderingContext2D, playerIndex: 0 | 1): void {
-  // Highlight the allowed half for cue ball placement
-  const left = playerIndex === 0 ? RAIL_WIDTH : TABLE_WIDTH / 2
-  const right = playerIndex === 0 ? TABLE_WIDTH / 2 : TABLE_WIDTH - RAIL_WIDTH
+function drawPlacementHighlight(ctx: CanvasRenderingContext2D): void {
+  // Highlight the full table for cue ball placement (Chinese 8-ball: full-table ball-in-hand)
+  const left = RAIL_WIDTH
+  const right = TABLE_WIDTH - RAIL_WIDTH
   const top = RAIL_WIDTH
   const bottom = TABLE_HEIGHT - RAIL_WIDTH
 
@@ -356,7 +356,7 @@ export default function BilliardTable({ gameState, playerIndex, isMyTurn, ballsM
 
     // Placement highlight
     if (canPlaceCueBall) {
-      drawPlacementHighlight(ctx, playerIndex)
+      drawPlacementHighlight(ctx)
     }
 
     // Aiming overlay

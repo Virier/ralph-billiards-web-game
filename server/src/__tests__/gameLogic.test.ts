@@ -305,38 +305,32 @@ describe('evaluateTurnEnd — group assignment side effect', () => {
 // ─── validateCueBallPlacement ─────────────────────────────────────────────────
 
 describe('validateCueBallPlacement', () => {
-  const safeX0 = PLAY_LEFT + BALL_RADIUS + 10   // Player 0 valid x (left half)
-  const safeX1 = TABLE_WIDTH / 2 + BALL_RADIUS + 10 // Player 1 valid x (right half)
+  const safeX = PLAY_LEFT + BALL_RADIUS + 10   // Valid x on left side
+  const safeXRight = TABLE_WIDTH * 0.75        // Valid x on right side (full-table ball-in-hand)
   const safeY = TABLE_HEIGHT / 2
 
-  it('accepts valid position for player 0 (left half)', () => {
-    expect(validateCueBallPlacement(safeX0, safeY, 0)).toBeNull()
+  it('accepts valid position anywhere on the table (left side)', () => {
+    expect(validateCueBallPlacement(safeX, safeY)).toBeNull()
   })
 
-  it('accepts valid position for player 1 (right half)', () => {
-    expect(validateCueBallPlacement(safeX1, safeY, 1)).toBeNull()
+  it('accepts valid position anywhere on the table (right side)', () => {
+    expect(validateCueBallPlacement(safeXRight, safeY)).toBeNull()
+  })
+
+  it('accepts valid position in the center of the table', () => {
+    expect(validateCueBallPlacement(TABLE_WIDTH / 2, safeY)).toBeNull()
   })
 
   it('rejects position outside table bounds', () => {
-    expect(validateCueBallPlacement(0, safeY, 0)).not.toBeNull()
-    expect(validateCueBallPlacement(TABLE_WIDTH, safeY, 0)).not.toBeNull()
-  })
-
-  it('rejects player 0 placing in right half', () => {
-    const rightX = TABLE_WIDTH * 0.75
-    expect(validateCueBallPlacement(rightX, safeY, 0)).not.toBeNull()
-  })
-
-  it('rejects player 1 placing in left half', () => {
-    const leftX = TABLE_WIDTH * 0.25
-    expect(validateCueBallPlacement(leftX, safeY, 1)).not.toBeNull()
+    expect(validateCueBallPlacement(0, safeY)).not.toBeNull()
+    expect(validateCueBallPlacement(TABLE_WIDTH, safeY)).not.toBeNull()
   })
 
   it('rejects position too close to rail (top)', () => {
-    expect(validateCueBallPlacement(safeX0, PLAY_TOP, 0)).not.toBeNull()
+    expect(validateCueBallPlacement(safeX, PLAY_TOP)).not.toBeNull()
   })
 
   it('rejects position too close to rail (bottom)', () => {
-    expect(validateCueBallPlacement(safeX0, PLAY_BOTTOM, 0)).not.toBeNull()
+    expect(validateCueBallPlacement(safeX, PLAY_BOTTOM)).not.toBeNull()
   })
 })

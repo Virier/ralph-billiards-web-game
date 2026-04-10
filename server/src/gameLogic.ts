@@ -239,7 +239,6 @@ export function evaluateTurnEnd(
 export function validateCueBallPlacement(
   x: number,
   y: number,
-  playerIndex: 0 | 1,
 ): string | null {
   const margin = BALL_RADIUS + 2
   if (
@@ -250,10 +249,6 @@ export function validateCueBallPlacement(
   ) {
     return '白球只能放在台面内'
   }
-
-  const halfX = TABLE_WIDTH / 2
-  if (playerIndex === 0 && x > halfX) return '白球只能放在己方底线半场内'
-  if (playerIndex === 1 && x < halfX) return '白球只能放在己方底线半场内'
 
   return null
 }
