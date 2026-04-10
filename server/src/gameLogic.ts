@@ -133,6 +133,7 @@ export interface TurnResult {
   gameOver: boolean
   winner?: 0 | 1
   isFoul: boolean
+  keepTurn: boolean
 }
 
 export function evaluateTurnEnd(
@@ -142,6 +143,10 @@ export function evaluateTurnEnd(
   cueBallPocketedThisTurn: boolean,
   cueBallFirstContact: number | null,
 ): TurnResult {
+  // ── 0. Record break phase before group assignment ────────────────────────
+  const wasBreakPhase =
+    state.playerGroups[0] === 'unassigned' && state.playerGroups[1] === 'unassigned'
+
   // ── 1. Assign groups if needed (mutates state) ───────────────────────────
   if (shooter !== null) {
     assignGroupsIfNeeded(state, ballsPocketedThisTurn, shooter)
@@ -166,7 +171,7 @@ export function evaluateTurnEnd(
       }
     }
 
-    return { gameOver: true, winner, isFoul: false }
+    return { gameOver: true, winner, isFoul: false, keepTurn: false }
   }
 
   // ── 3. Foul detection ────────────────────────────────────────────────────
@@ -188,7 +193,28 @@ export function evaluateTurnEnd(
     }
   }
 
-  return { gameOver: false, isFoul }
+  // ── 4. keepTurn calculation ──────────────────────────────────────────────
+  let keepTurn = false
+  if (!isFoul && shooter !== null) {
+    if (wasBreakPhase) {
+      // Break phase: keep turn if at least one non-cue non-black ball pocketed
+      keepTurn = ballsPocketedThisTurn.some((id) => {
+        const ball = state.balls.find((b) => b.id === id)
+        return ball && ball.type !== 'cue' && ball.type !== 'black'
+      })
+    } else {
+      // Regular play: keep turn if at least one own-group ball pocketed
+      const shooterGroup = state.playerGroups[shooter]
+      if (shooterGroup !== 'unassigned') {
+        keepTurn = ballsPocketedThisTurn.some((id) => {
+          const ball = state.balls.find((b) => b.id === id)
+          return ball && ball.type === shooterGroup
+        })
+      }
+    }
+  }
+
+  return { gameOver: false, isFoul, keepTurn }
 }
 
 /**

@@ -283,7 +283,9 @@ function handleTurnEnd(room: Room): void {
     return
   }
 
-  state.currentPlayer = state.currentPlayer === 0 ? 1 : 0
+  if (!result.keepTurn) {
+    state.currentPlayer = state.currentPlayer === 0 ? 1 : 0
+  }
   if (result.isFoul) {
     state.foulPending = true
     state.canPlaceCueBall = true
