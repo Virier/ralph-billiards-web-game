@@ -18,6 +18,18 @@ Started: Fri Apr 10 10:36:44 CST 2026
   - Groups may change mid-function (step 1 mutates); in step 3, `state.playerGroups[shooter]` is already post-assignment
 ---
 
+## 2026-04-10 10:48 - US-014
+- Removed half-table restriction from `validateCueBallPlacement` (dropped `playerIndex` param)
+- Updated call site in `server/src/index.ts` to use new 2-arg signature
+- Updated `drawPlacementHighlight` in `client/src/BilliardTable.tsx` to highlight full table
+- Updated `validateCueBallPlacement` tests to reflect full-table behavior (replaced half-table rejection tests)
+- Files changed: `server/src/gameLogic.ts`, `server/src/index.ts`, `client/src/BilliardTable.tsx`, `server/src/__tests__/gameLogic.test.ts`
+- **Learnings for future iterations:**
+  - `validateCueBallPlacement` signature change removed `playerIndex` param — must update all call sites and tests
+  - `drawPlacementHighlight` no longer needs `playerIndex`; call site updated accordingly
+  - Browser verification for this story requires manual check (no dev-browser tool available in this env)
+---
+
 ## 2026-04-10 10:40 - US-012
 - Added `keepTurn: boolean` field to `TurnResult` interface
 - Updated `evaluateTurnEnd` to compute `keepTurn`: true when no foul and own-group ball pocketed (or break phase with any non-cue/non-black ball pocketed)
