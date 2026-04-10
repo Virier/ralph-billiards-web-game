@@ -171,7 +171,12 @@ export function evaluateTurnEnd(
       }
     }
 
-    return { gameOver: true, winner, isFoul: false, keepTurn: false }
+    // Illegal 8-ball pocket (own group balls remaining, or cue ball pocketed) is a foul
+    const illegalBlack =
+      cueBallPocketedThisTurn ||
+      (state.playerGroups[shooter] !== 'unassigned' &&
+        state.balls.filter((b) => b.type === state.playerGroups[shooter] && !b.pocketed).length > 0)
+    return { gameOver: true, winner, isFoul: illegalBlack, keepTurn: false }
   }
 
   // ── 3. Foul detection ────────────────────────────────────────────────────
@@ -186,8 +191,18 @@ export function evaluateTurnEnd(
         isFoul = true
       } else {
         const firstBall = state.balls.find((b) => b.id === cueBallFirstContact)
-        if (firstBall && firstBall.type !== state.playerGroups[shooter]) {
-          isFoul = true
+        if (firstBall) {
+          if (firstBall.type === 'black') {
+            // Legal to shoot black 8 only when all own group balls are pocketed
+            const myRemainingGroupBalls = state.balls.filter(
+              (b) => b.type === state.playerGroups[shooter] && !b.pocketed,
+            )
+            if (myRemainingGroupBalls.length > 0) {
+              isFoul = true
+            }
+          } else if (firstBall.type !== state.playerGroups[shooter]) {
+            isFoul = true
+          }
         }
       }
     }
