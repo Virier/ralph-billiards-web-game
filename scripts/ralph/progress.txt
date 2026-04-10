@@ -44,6 +44,18 @@ Started: Fri Apr 10 10:36:44 CST 2026
   - No-cushion foul only applies when groups are assigned AND no balls were pocketed
 ---
 
+## 2026-04-10 10:50 - US-016
+- Added 10 new unit tests in `server/src/__tests__/gameLogic.test.ts` covering all Chinese 8-ball rule fixes
+- New describe blocks: `evaluateTurnEnd — keepTurn`, `evaluateTurnEnd — 8-ball contact legality`, `evaluateTurnEnd — no-cushion foul`
+- Tests: keepTurn=true when own-group ball pocketed; keepTurn=false when only opponent ball pocketed; keepTurn=true in break phase; keepTurn=false on foul; no foul when 8-ball hit with own group cleared; foul when 8-ball hit with group remaining; no-cushion foul when groups assigned+no pocketed+no cushion; no foul with cushion contact; no no-cushion foul in break phase
+- Files changed: `server/src/__tests__/gameLogic.test.ts`
+- Total tests: 48 (was 38)
+- **Learnings for future iterations:**
+  - `validateCueBallPlacement` full-table tests were already added in US-014; no duplication needed
+  - `anyCushionContact` parameter defaults to `true`, so existing tests pass without changes
+  - Break phase is detected by both `wasBreakPhase` flag in the function AND by `state.playerGroups[0] === 'unassigned'` before calling evaluateTurnEnd
+---
+
 ## 2026-04-10 10:40 - US-012
 - Added `keepTurn: boolean` field to `TurnResult` interface
 - Updated `evaluateTurnEnd` to compute `keepTurn`: true when no foul and own-group ball pocketed (or break phase with any non-cue/non-black ball pocketed)
