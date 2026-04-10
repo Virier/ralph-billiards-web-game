@@ -1,0 +1,144 @@
+{
+  "project": "台球网页版双人对战",
+  "branchName": "ralph/chinese-8ball-compliance",
+  "description": "中式8球规则合规修复 + 浏览器验证 + 测试覆盖：修复回合继续、击黑8合法性、手放白球区域、无库犯规，并完成所有 UI 故事的 dev-browser 验证",
+  "userStories": [
+    {
+      "id": "US-012",
+      "title": "修复回合继续逻辑（合法进己方球不换人）",
+      "description": "As a player, I want to keep my turn when I legally pocket a ball from my group, so the game follows Chinese 8-ball rules.",
+      "acceptanceCriteria": [
+        "evaluateTurnEnd 新增返回字段 keepTurn: boolean",
+        "未犯规且本轮进了至少一颗己方组球时，keepTurn = true",
+        "开台阶段（groups 均为 unassigned）进了至少一颗非 cue 非 black 球时，keepTurn = true",
+        "犯规时 keepTurn = false（无论是否进球）",
+        "游戏结束时 keepTurn = false",
+        "server/src/index.ts 中 handleTurnEnd 根据 keepTurn 决定是否切换 currentPlayer",
+        "现有 server 40 个测试继续通过",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "修复击打黑8球的合法性判定",
+      "description": "As a player, I want to legally shoot the 8-ball when all my group balls are pocketed, without triggering a false foul.",
+      "acceptanceCriteria": [
+        "当射手己方组所有球均已进袋时，cueBallFirstContact 为黑8（id=8）不判犯规",
+        "仍有己方组球残留时 cueBallFirstContact 为黑8（id=8）→ 判犯规",
+        "仍有己方组球残留时击打黑8并进袋 → 犯规 + 黑8已进 → 对方获胜",
+        "evaluateTurnEnd 中的 foul 判定更新：firstBall.type === 'black' && myRemainingGroupBalls.length === 0 视为合法",
+        "现有测试继续通过",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "修复手放白球为全台自由放球",
+      "description": "As a player, I want to place the cue ball anywhere on the table after my opponent fouls, following the Chinese 8-ball standard rule (full-table ball-in-hand).",
+      "acceptanceCriteria": [
+        "validateCueBallPlacement 移除半场限制，允许放置在台面任意位置（需距台边 ≥ BALL_RADIUS + 2）",
+        "server/src/index.ts 中 place_cue_ball 处理逻辑同步更新（移除半场校验）",
+        "client/src/BilliardTable.tsx 中放置高亮区域更新为全台（不再只高亮半边）",
+        "超时自动放置位置调整为 TABLE_WIDTH * 0.25 / TABLE_WIDTH * 0.75 仍适用（全台合法位置）",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "实现无库犯规检测",
+      "description": "As a player, I want the game to enforce that at least one ball contacts a cushion (or is pocketed) after the cue ball strikes a ball, following Chinese 8-ball rules.",
+      "acceptanceCriteria": [
+        "Room 新增 anyCushionContactThisTurn: boolean 字段，每次 shoot 时重置为 false",
+        "server/src/index.ts 的 Matter.js collisionStart 事件新增墙体碰撞检测：任意球碰到 label 为 wall 的 body 时设 anyCushionContactThisTurn = true",
+        "evaluateTurnEnd 新增参数 anyCushionContact: boolean",
+        "groups 已分配 + 无进球 + anyCushionContact === false → isFoul = true",
+        "开台阶段（groups 均为 unassigned）不应用无库犯规规则",
+        "现有测试继续通过",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "补充中式8球规则单元测试",
+      "description": "As a developer, I want comprehensive unit tests for all fixed Chinese 8-ball rules so regressions are caught automatically.",
+      "acceptanceCriteria": [
+        "server/src/__tests__/gameLogic.test.ts 新增：进己方球时 keepTurn = true",
+        "新增：进对方球时 keepTurn = false",
+        "新增：开台阶段进球时 keepTurn = true",
+        "新增：己方球清空后击打黑8 → 不判犯规",
+        "新增：仍有己方球时击打黑8 → 判犯规",
+        "新增：无库且无进球（groups 已分配）→ isFoul = true",
+        "新增：有库接触时不因无库判犯规",
+        "新增：开台阶段无库 → 不判犯规",
+        "新增：validateCueBallPlacement 不再限制半场（任意台面位置合法）",
+        "所有新测试通过（vitest run）",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "浏览器验证 - 建房入房及等待室",
+      "description": "As a QA engineer, I want visual confirmation that the lobby and room flow work correctly in a real browser.",
+      "acceptanceCriteria": [
+        "使用 dev-browser skill 启动并访问前端（需先 npm run dev:client 和 npm run dev:server）",
+        "验证：首页显示「创建房间」和「加入房间」按钮",
+        "验证：点击「创建房间」后显示 6 位房间码和等待界面",
+        "验证：输入无效房间码时显示错误提示",
+        "截图记录所有验证结果并附在 progress.txt 中",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "浏览器验证 - 台球桌渲染与瞄准交互",
+      "description": "As a QA engineer, I want visual confirmation that the billiard table renders correctly and aiming works.",
+      "acceptanceCriteria": [
+        "验证：Canvas 渲染绿色台球桌、6 个球袋、边框",
+        "验证：16 颗球开球阵型正确显示（三角形排列）",
+        "验证：回合状态栏正确显示玩家信息、球组、剩余球数",
+        "验证：白球可瞄准（鼠标移动显示瞄准线和力度条）",
+        "截图记录渲染结果",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "浏览器验证 - 完整游戏流程与规则交互",
+      "description": "As a QA engineer, I want visual confirmation that game rules and UI interactions work end-to-end in the browser.",
+      "acceptanceCriteria": [
+        "验证：击球后球正常运动（物理效果）",
+        "验证：合法进球后回合不切换（US-012 修复后）",
+        "验证：犯规后对方可全台手放白球，全台区域高亮（US-014 修复后）",
+        "验证：60 秒倒计时显示，最后 10 秒显示红色数字",
+        "验证：游戏结束时显示赢家信息页",
+        "截图记录各阶段结果",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

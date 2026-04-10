@@ -1,0 +1,35 @@
+## Codebase Patterns
+- Room interface has `ballsPocketedThisTurn: number[]`, `shooterThisTurn: 0|1|null`, `cueBallFirstContact: number|null`, `cueBallPocketedThisTurn: boolean` for per-shot tracking; all reset on each `shoot` event
+- Turn end is detected by `wasMoved && !state.ballsMoving` in physics loop → calls `handleTurnEnd(room)`; foul detection now in handleTurnEnd (cue pocketed OR hit wrong group first)
+- Group assignment: `assignGroupsIfNeeded` iterates `ballsPocketedThisTurn`, skips cue/black balls, assigns shooter = first-pocketed ball's type, opponent = opposite
+- Monorepo: /client (React+Vite) and /server (Node+ws), each has own package.json and tsconfig.json
+- Client typecheck: `cd client && npm run typecheck` (tsc --noEmit with bundler moduleResolution)
+- Server typecheck: `cd server && npm run typecheck` (tsc --noEmit with NodeNext module)
+- Server dev runner: `tsx watch src/index.ts` (no ts-node)
+- Canvas rendering: BilliardTable.tsx exports TABLE_WIDTH=1400, TABLE_HEIGHT=700, BALL_RADIUS=14 — import these in future components needing coordinate space alignment
+- Ball coordinate space: server ball (x,y) positions use full TABLE_WIDTH×TABLE_HEIGHT space (no rail offset); canvas renders rails as visual decoration on top
+- Root package.json scripts: dev:client, dev:server, typecheck
+- Server message protocol: JSON over WebSocket; client sends `join_room` (roomCode: "" to create, code to join)
+- Server sends: `room_created`, `room_joined`, `error`, `start_game` (with GameState + playerIndex), `opponent_disconnected`, `game_state` (per frame), `game_over`
+- Game state types (Ball, GameState) exported from server/src/gameLogic.ts (extracted from index.ts in earlier refactor)
+- Client shared types live in `client/src/types.ts` (Ball, GameState, ServerMessage, ClientMessage)
+- Table dimensions: 1400×700, ballRadius=14, rackX=TABLE_WIDTH*0.75 (foot spot), cueBall at x=TABLE_WIDTH*0.25
+- Use `import { randomUUID } from 'crypto'` for Node.js UUID generation (not global crypto)
+- Client App uses page-based state machine: 'lobby' | 'waiting' | 'game' | 'game_over'
+- WebSocket is stored in useRef (wsRef) to avoid re-renders; connect only when user takes action
+- Physics: Matter.js per-room engine, ballBodies Map<id, Body>, 60fps setInterval; pocket detection by distance (POCKET_RADIUS + BALL_RADIUS); walls segmented with gaps at each pocket
+- TypeScript: never cast Array.indexOf() to 0|1 directly — it can return -1; check then cast
+- MAX_SHOOT_POWER = 0.08 scales power (0-100%) to Matter.js force; shoot handler is in server/src/index.ts
+- BilliardTable.tsx props: isMyTurn/ballsMoving/onShoot; canAim = isMyTurn && !ballsMoving guards all mouse interaction
+- Use refs (canAimRef, gameStateRef, onShootRef) for stable useCallback handlers — no stale closure, no over-invalidation
+- Canvas mouse→logical coords: (e.clientX - rect.left) * (TABLE_WIDTH / rect.width)
+- Aiming: direction = normalize(cursor − cueBall); power = min(dist, 150) / 150 (canvas px)
+- evaluateTurnEnd signature: (state, shooter, ballsPocketedThisTurn, cueBallPocketedThisTurn, cueBallFirstContact) → TurnResult
+- TurnResult interface: { gameOver: boolean, winner?: 0|1, isFoul: boolean, keepTurn: boolean }
+- keepTurn logic: !isFoul && !gameOver && (pocketed own group ball, or open table pocketed any non-cue/non-black ball)
+- Full-table ball-in-hand (US-014): validateCueBallPlacement only checks table bounds (no half-court restriction)
+- No-cushion foul (US-015): Room.anyCushionContactThisTurn tracked via Matter.js collisionStart wall events
+---
+# Ralph Progress Log
+Started: Thu Apr 10 2026
+---
