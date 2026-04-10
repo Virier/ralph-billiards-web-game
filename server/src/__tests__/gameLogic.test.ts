@@ -302,6 +302,98 @@ describe('evaluateTurnEnd — group assignment side effect', () => {
   })
 })
 
+describe('evaluateTurnEnd — keepTurn', () => {
+  it('keepTurn = true when own group ball pocketed (no foul)', () => {
+    const state = createInitialGameState()
+    state.playerGroups[0] = 'solid'
+    state.playerGroups[1] = 'stripe'
+    // First contact solid ball, pocketed a solid ball — shooter keeps turn
+    const result = evaluateTurnEnd(state, 0, [1], false, 1)
+    expect(result.keepTurn).toBe(true)
+    expect(result.isFoul).toBe(false)
+  })
+
+  it('keepTurn = false when only opponent group ball pocketed (no own-group ball)', () => {
+    const state = createInitialGameState()
+    state.playerGroups[0] = 'solid'
+    state.playerGroups[1] = 'stripe'
+    // Hit own group first (no foul), but pocketed only opponent stripe ball
+    const result = evaluateTurnEnd(state, 0, [9], false, 1)
+    expect(result.keepTurn).toBe(false)
+    expect(result.isFoul).toBe(false)
+  })
+
+  it('keepTurn = true in break phase when any non-cue non-black ball pocketed', () => {
+    const state = createInitialGameState()
+    // Groups unassigned (break phase) — pocket a solid ball
+    const result = evaluateTurnEnd(state, 0, [1], false, 1)
+    expect(result.keepTurn).toBe(true)
+    expect(result.isFoul).toBe(false)
+  })
+
+  it('keepTurn = false when foul occurs even if own-group ball pocketed', () => {
+    const state = createInitialGameState()
+    state.playerGroups[0] = 'solid'
+    state.playerGroups[1] = 'stripe'
+    // Cue ball also pocketed → foul
+    const result = evaluateTurnEnd(state, 0, [0, 1], true, 1)
+    expect(result.isFoul).toBe(true)
+    expect(result.keepTurn).toBe(false)
+  })
+})
+
+describe('evaluateTurnEnd — 8-ball contact legality', () => {
+  it('no foul when all own group balls cleared and 8-ball is first contact', () => {
+    let state = createInitialGameState()
+    // Pocket all solid balls (1–7)
+    for (let i = 1; i <= 7; i++) state = pocketBall(state, i)
+    state.playerGroups[0] = 'solid'
+    state.playerGroups[1] = 'stripe'
+    // Hit 8-ball first — legal since solid group is cleared
+    const result = evaluateTurnEnd(state, 0, [], false, 8)
+    expect(result.isFoul).toBe(false)
+    expect(result.gameOver).toBe(false)
+  })
+
+  it('foul when own group balls remain and 8-ball is first contact', () => {
+    const state = createInitialGameState()
+    state.playerGroups[0] = 'solid'
+    state.playerGroups[1] = 'stripe'
+    // Solid balls 1–7 all still on table — hitting 8-ball is a foul
+    const result = evaluateTurnEnd(state, 0, [], false, 8)
+    expect(result.isFoul).toBe(true)
+    expect(result.gameOver).toBe(false)
+  })
+})
+
+describe('evaluateTurnEnd — no-cushion foul', () => {
+  it('isFoul = true when groups assigned, no balls pocketed, no cushion contact', () => {
+    const state = createInitialGameState()
+    state.playerGroups[0] = 'solid'
+    state.playerGroups[1] = 'stripe'
+    const result = evaluateTurnEnd(state, 0, [], false, 1, false)
+    expect(result.isFoul).toBe(true)
+    expect(result.gameOver).toBe(false)
+  })
+
+  it('no foul when groups assigned, no balls pocketed, but cushion was contacted', () => {
+    const state = createInitialGameState()
+    state.playerGroups[0] = 'solid'
+    state.playerGroups[1] = 'stripe'
+    const result = evaluateTurnEnd(state, 0, [], false, 1, true)
+    expect(result.isFoul).toBe(false)
+    expect(result.gameOver).toBe(false)
+  })
+
+  it('no no-cushion foul in break phase (groups unassigned)', () => {
+    const state = createInitialGameState()
+    // Break phase: no foul even without cushion contact
+    const result = evaluateTurnEnd(state, 0, [], false, 9, false)
+    expect(result.isFoul).toBe(false)
+    expect(result.gameOver).toBe(false)
+  })
+})
+
 // ─── validateCueBallPlacement ─────────────────────────────────────────────────
 
 describe('validateCueBallPlacement', () => {
