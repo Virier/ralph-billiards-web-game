@@ -30,6 +30,20 @@ Started: Fri Apr 10 10:36:44 CST 2026
   - Browser verification for this story requires manual check (no dev-browser tool available in this env)
 ---
 
+## 2026-04-10 10:55 - US-015
+- Added `anyCushionContactThisTurn: boolean` to `Room` interface, reset on each `shoot` and `handleTimeout`
+- Restructured `collisionStart` event handler to detect wall collisions (any ball with `label === 'wall'`), sets `room.anyCushionContactThisTurn = true`; cue-ball first contact tracking now runs in same loop without early-return shortcut
+- Added `anyCushionContact: boolean = true` parameter (defaulted to `true` for backward-compatible tests) to `evaluateTurnEnd`
+- Added step 3b in `evaluateTurnEnd`: groups assigned + no balls pocketed + `!anyCushionContact` → `isFoul = true`; break phase exempted
+- Passed `room.anyCushionContactThisTurn` to `evaluateTurnEnd` in `handleTurnEnd`; reset field afterwards
+- Files changed: `server/src/gameLogic.ts`, `server/src/index.ts`
+- **Learnings for future iterations:**
+  - Default parameter value (`= true`) on `evaluateTurnEnd` is the cleanest way to add optional params without breaking existing tests
+  - The `collisionStart` early-return guard (`if (room.cueBallFirstContact !== null) return`) blocked wall detection — restructure to use per-pair checks without early-returns from the handler
+  - Wall bodies have `label: 'wall'` (set in `wallOptions` in `createWalls`)
+  - No-cushion foul only applies when groups are assigned AND no balls were pocketed
+---
+
 ## 2026-04-10 10:40 - US-012
 - Added `keepTurn: boolean` field to `TurnResult` interface
 - Updated `evaluateTurnEnd` to compute `keepTurn`: true when no foul and own-group ball pocketed (or break phase with any non-cue/non-black ball pocketed)
